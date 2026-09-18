@@ -2,9 +2,8 @@
 feature_extraction.py — Feature Extraction Module
 
 Derives high-level features from raw detections for use by the fuzzy guidance system:
-  - box_area_ratio: relative size of detection box vs frame (distance proxy)
-  - angle_offset:   horizontal position offset from center (-1 = far left, +1 = far right)
-  - confidence:     raw detector confidence score
+  - angle_offset:       horizontal position offset from center (-1 = far left, +1 = far right)
+  - confidence:         raw detector confidence score
   - temporal_stability: fraction of recent frames with consistent detection (reduces flicker)
 """
 
@@ -46,20 +45,12 @@ class FeatureExtractor:
             dict: {
                 'class_id': int,
                 'class_name': str,
-                'box_area_ratio': float,   # 0 to 1, larger = closer
                 'angle_offset': float,     # -1 (far left) to +1 (far right)
                 'confidence': float,       # 0 to 1
                 'temporal_stability': float # 0 to 1
             }
         """
         cx, cy, w, h = detection.bbox_xywh
-        frame_area = frame_width * frame_height
-
-        # --- box_area_ratio ---
-        # Ratio of bounding box area to total frame area (proxy for distance)
-        box_area = w * h
-        box_area_ratio = box_area / frame_area if frame_area > 0 else 0.0
-        box_area_ratio = np.clip(box_area_ratio, 0.0, 1.0)
 
         # --- angle_offset ---
         # Normalized horizontal offset: -1 (far left) to +1 (far right)
@@ -76,7 +67,6 @@ class FeatureExtractor:
         return {
             'class_id': detection.class_id,
             'class_name': detection.class_name,
-            'box_area_ratio': float(box_area_ratio),
             'angle_offset': float(angle_offset),
             'confidence': float(confidence),
             'temporal_stability': float(stability),
@@ -179,7 +169,8 @@ class FeatureExtractor:
 
 
 if __name__ == "__main__":
-    # Quick demo with synthetic data
+    import os, sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from detect import Detection
 
     extractor = FeatureExtractor(history_length=5)

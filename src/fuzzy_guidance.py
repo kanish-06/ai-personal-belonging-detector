@@ -1,12 +1,9 @@
 """
 fuzzy_guidance.py — Mamdani Fuzzy Inference System for Voice Guidance
 
-Takes perception features (distance, angle, confidence, stability) and outputs
+Takes perception features (angle, confidence, stability) and outputs
 guidance parameters (urgency, announcement frequency) that control how the
 system speaks to the user.
-
-This is the "fuzzy half" of the neuro-fuzzy architecture: it converts noisy,
-uncertain detector outputs into smooth, human-friendly guidance decisions.
 
 Uses scikit-fuzzy (skfuzzy) for the Mamdani-style FIS implementation.
 """
@@ -28,7 +25,6 @@ class FuzzyGuidanceSystem:
     Mamdani-style Fuzzy Inference System for guidance decision-making.
 
     Inputs:
-        - distance (cm):          Near / Medium / Far
         - angle (-1 to +1):       Left / Center / Right
         - confidence (0 to 1):    Low / Medium / High
         - stability (0 to 1):     Unstable / Stable
@@ -52,12 +48,6 @@ class FuzzyGuidanceSystem:
         """Construct the complete fuzzy system: variables, MFs, rules, and control system."""
 
         # ─── Input Variables (Antecedents) ──────────────────────────────────
-
-        # Distance (from ANFIS, in cm): 0 to 350
-        self.distance = ctrl.Antecedent(np.arange(0, 351, 1), 'distance')
-        self.distance['near'] = fuzz.trapmf(self.distance.universe, [0, 0, 30, 70])
-        self.distance['medium'] = fuzz.trimf(self.distance.universe, [40, 90, 160])
-        self.distance['far'] = fuzz.trapmf(self.distance.universe, [120, 200, 350, 350])
 
         # Angle offset (-1 to +1): Left / Center / Right
         self.angle = ctrl.Antecedent(np.arange(-1.0, 1.01, 0.01), 'angle')
@@ -91,80 +81,56 @@ class FuzzyGuidanceSystem:
 
         # ─── Rules ─────────────────────────────────────────────────────────
 
-        # Rule 1: Near + Center + High confidence → High urgency, Fast frequency
+        # Rule 1: High confidence + Center + Stable -> High urgency, Fast frequency
         rule1 = ctrl.Rule(
-            self.distance['near'] & self.angle['center'] & self.confidence['high'],
+            self.confidence['high'] & self.angle['center'] & self.stability['stable'],
             (self.urgency['high'], self.frequency['fast']),
         )
 
-        # Rule 2: Near + Left + High confidence → High urgency, Fast frequency
+        # Rule 2: High confidence + Left/Right + Stable -> High urgency, Fast frequency
         rule2 = ctrl.Rule(
-            self.distance['near'] & self.angle['left'] & self.confidence['high'],
+            self.confidence['high'] & (self.angle['left'] | self.angle['right']) & self.stability['stable'],
             (self.urgency['high'], self.frequency['fast']),
         )
 
-        # Rule 3: Near + Right + High confidence → High urgency, Fast frequency
+        # Rule 3: Medium confidence + Stable -> Medium urgency, Slow frequency
         rule3 = ctrl.Rule(
-            self.distance['near'] & self.angle['right'] & self.confidence['high'],
-            (self.urgency['high'], self.frequency['fast']),
-        )
-
-        # Rule 4: Medium distance + Medium/High confidence → Medium urgency, Slow frequency
-        rule4a = ctrl.Rule(
-            self.distance['medium'] & self.confidence['medium'],
-            (self.urgency['medium'], self.frequency['slow']),
-        )
-        rule4b = ctrl.Rule(
-            self.distance['medium'] & self.confidence['high'],
+            self.confidence['medium'] & self.stability['stable'],
             (self.urgency['medium'], self.frequency['slow']),
         )
 
-        # Rule 5: Far distance → Low urgency, Slow frequency
+        # Rule 4: High confidence + Unstable -> Medium urgency, Slow frequency
+        rule4 = ctrl.Rule(
+            self.confidence['high'] & self.stability['unstable'],
+            (self.urgency['medium'], self.frequency['slow']),
+        )
+
+        # Rule 5: Low confidence -> Low urgency, Slow frequency
         rule5 = ctrl.Rule(
-            self.distance['far'],
-            (self.urgency['low'], self.frequency['slow']),
-        )
-
-        # Rule 6: Unstable → Low urgency (suppress flickering detections)
-        rule6 = ctrl.Rule(
-            self.stability['unstable'],
-            (self.urgency['low'], self.frequency['slow']),
-        )
-
-        # Rule 7: Low confidence → Low urgency, Slow frequency
-        rule7 = ctrl.Rule(
             self.confidence['low'],
             (self.urgency['low'], self.frequency['slow']),
         )
 
-        # Rule 8: Near + Medium confidence + Stable → Medium urgency, Fast frequency
-        rule8 = ctrl.Rule(
-            self.distance['near'] & self.confidence['medium'] & self.stability['stable'],
-            (self.urgency['medium'], self.frequency['fast']),
-        )
-
-        # Rule 9: Medium distance + High confidence + Stable → Medium urgency, Slow frequency
-        rule9 = ctrl.Rule(
-            self.distance['medium'] & self.confidence['high'] & self.stability['stable'],
-            (self.urgency['medium'], self.frequency['slow']),
+        # Rule 6: Unstable + Low/Medium confidence -> Low urgency, Slow frequency
+        rule6 = ctrl.Rule(
+            self.stability['unstable'] & (self.confidence['low'] | self.confidence['medium']),
+            (self.urgency['low'], self.frequency['slow']),
         )
 
         # ─── Control System ────────────────────────────────────────────────
 
         self._ctrl = ctrl.ControlSystem([
-            rule1, rule2, rule3, rule4a, rule4b,
-            rule5, rule6, rule7, rule8, rule9,
+            rule1, rule2, rule3, rule4, rule5, rule6,
         ])
         self._sim = ctrl.ControlSystemSimulation(self._ctrl)
 
-        print("[FuzzyGuidance] Fuzzy Inference System initialized with 10 rules.")
+        print("[FuzzyGuidance] Fuzzy Inference System initialized with 6 Mamdani rules.")
 
-    def compute(self, distance_cm, angle_offset, confidence, stability):
+    def compute(self, angle_offset, confidence, stability):
         """
         Run the fuzzy inference system.
 
         Args:
-            distance_cm (float): Estimated distance in cm (0-350+).
             angle_offset (float): Horizontal offset (-1 to +1).
             confidence (float): Detection confidence (0-1).
             stability (float): Temporal stability (0-1).
@@ -174,21 +140,18 @@ class FuzzyGuidanceSystem:
                 'urgency': float (0-1),
                 'frequency': float (0-1),
                 'direction': str ('left', 'center', 'right'),
-                'distance_label': str ('near', 'medium', 'far'),
                 'should_announce': bool
             }
         """
         if self._use_fallback:
-            return self._fallback_compute(distance_cm, angle_offset, confidence, stability)
+            return self._fallback_compute(angle_offset, confidence, stability)
 
         # Clamp inputs to valid ranges
-        distance_cm = np.clip(distance_cm, 0, 350)
         angle_offset = np.clip(angle_offset, -1.0, 1.0)
         confidence = np.clip(confidence, 0.0, 1.0)
         stability = np.clip(stability, 0.0, 1.0)
 
         try:
-            self._sim.input['distance'] = distance_cm
             self._sim.input['angle'] = angle_offset
             self._sim.input['confidence'] = confidence
             self._sim.input['stability'] = stability
@@ -200,22 +163,18 @@ class FuzzyGuidanceSystem:
         except Exception as e:
             # Fallback if FIS computation fails (e.g., no rules fire)
             print(f"[FuzzyGuidance] FIS computation error: {e}. Using fallback.")
-            return self._fallback_compute(distance_cm, angle_offset, confidence, stability)
+            return self._fallback_compute(angle_offset, confidence, stability)
 
         # Derive direction label from angle_offset
         direction = self._get_direction(angle_offset)
 
-        # Derive distance label
-        distance_label = self._get_distance_label(distance_cm)
-
-        # Decide whether to announce (hard threshold on confidence)
+        # Decide whether to announce (hard threshold on confidence and urgency)
         should_announce = confidence >= 0.30 and urgency > 0.15
 
         return {
             'urgency': urgency,
             'frequency': frequency,
             'direction': direction,
-            'distance_label': distance_label,
             'should_announce': should_announce,
         }
 
@@ -228,39 +187,22 @@ class FuzzyGuidanceSystem:
         else:
             return 'center'
 
-    def _get_distance_label(self, distance_cm):
-        """Map distance to a human-readable label."""
-        if distance_cm < 60:
-            return 'near'
-        elif distance_cm < 150:
-            return 'medium'
-        else:
-            return 'far'
-
-    def _fallback_compute(self, distance_cm, angle_offset, confidence, stability):
+    def _fallback_compute(self, angle_offset, confidence, stability):
         """
         Simple rule-based fallback when scikit-fuzzy is not available.
         Approximates the fuzzy system's behavior with hard thresholds.
         """
-        # Direction
         direction = self._get_direction(angle_offset)
-        distance_label = self._get_distance_label(distance_cm)
 
-        # Urgency
         if confidence < 0.3 or stability < 0.3:
             urgency = 0.1
-        elif distance_label == 'near' and confidence > 0.6:
+            frequency = 0.2
+        elif confidence > 0.7 and stability > 0.6:
             urgency = 0.85
-        elif distance_label == 'medium':
-            urgency = 0.5
-        else:
-            urgency = 0.2
-
-        # Frequency
-        if distance_label == 'near' and confidence > 0.5:
             frequency = 0.8
         else:
-            frequency = 0.3
+            urgency = 0.5
+            frequency = 0.4
 
         should_announce = confidence >= 0.30 and urgency > 0.15
 
@@ -268,7 +210,6 @@ class FuzzyGuidanceSystem:
             'urgency': urgency,
             'frequency': frequency,
             'direction': direction,
-            'distance_label': distance_label,
             'should_announce': should_announce,
         }
 
@@ -277,13 +218,13 @@ class FuzzyGuidanceSystem:
 
 def generate_direction_phrase(angle_offset):
     """
-    Convert an angle offset value into a clock-position or relative phrase.
+    Convert an angle offset value into a relative direction phrase.
 
     Args:
         angle_offset (float): -1 (far left) to +1 (far right).
 
     Returns:
-        str: e.g., "directly ahead", "to your left", "at two o'clock"
+        str: e.g., "directly ahead", "to your left", "far to your right"
     """
     if angle_offset < -0.6:
         return "far to your left"
@@ -309,24 +250,21 @@ if __name__ == "__main__":
     fis = FuzzyGuidanceSystem()
 
     test_cases = [
-        # (distance_cm, angle_offset, confidence, stability, description)
-        (30, 0.0, 0.92, 0.9, "Near, center, high-conf, stable — should be HIGH urgency"),
-        (30, -0.5, 0.88, 0.8, "Near, left, high-conf — should be HIGH urgency, left"),
-        (30, 0.6, 0.90, 0.85, "Near, right, high-conf — should be HIGH urgency, right"),
-        (90, 0.1, 0.70, 0.7, "Medium dist, center, medium-conf — MEDIUM urgency"),
-        (200, 0.0, 0.60, 0.6, "Far, center — LOW urgency"),
-        (50, 0.0, 0.85, 0.2, "Near, high-conf but UNSTABLE — should suppress"),
-        (40, 0.0, 0.20, 0.8, "Near, stable but LOW confidence — should suppress"),
-        (100, 0.3, 0.75, 0.9, "Medium, slightly right, good conf+stability"),
+        # (angle_offset, confidence, stability, description)
+        (0.0, 0.92, 0.9, "Center, high-conf, stable -> HIGH urgency"),
+        (-0.5, 0.88, 0.8, "Left, high-conf, stable -> HIGH urgency, left"),
+        (0.6, 0.90, 0.85, "Right, high-conf, stable -> HIGH urgency, right"),
+        (0.1, 0.55, 0.7, "Center, medium-conf, stable -> MEDIUM urgency"),
+        (0.0, 0.85, 0.2, "High-conf but UNSTABLE -> MEDIUM/LOW urgency"),
+        (0.0, 0.20, 0.8, "Stable but LOW confidence -> suppress"),
     ]
 
-    for dist, angle, conf, stab, desc in test_cases:
-        result = fis.compute(dist, angle, conf, stab)
+    for angle, conf, stab, desc in test_cases:
+        result = fis.compute(angle, conf, stab)
         dir_phrase = generate_direction_phrase(angle)
         print(f"  {desc}")
-        print(f"    Inputs:  dist={dist}cm, angle={angle:.1f}, conf={conf:.2f}, stab={stab:.2f}")
+        print(f"    Inputs:  angle={angle:.1f}, conf={conf:.2f}, stab={stab:.2f}")
         print(f"    Outputs: urgency={result['urgency']:.2f}, freq={result['frequency']:.2f}, "
-              f"dir={result['direction']}, dist_label={result['distance_label']}, "
-              f"announce={result['should_announce']}")
+              f"dir={result['direction']}, announce={result['should_announce']}")
         print(f"    Phrase:  \"{dir_phrase}\"")
         print()

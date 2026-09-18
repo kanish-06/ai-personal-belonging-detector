@@ -16,7 +16,7 @@ try:
 except ImportError:
     HAS_PYTTSX3 = False
     print("[WARNING] pyttsx3 not installed. Voice output will print to console only.")
-    print("         Install with: pip install pyttsx3")
+    print("         Install with: pip install scikit-fuzzy / pyttsx3")
 
 
 class VoiceOutput:
@@ -29,15 +29,8 @@ class VoiceOutput:
     - Phrase construction: builds natural-sounding guidance phrases
     """
 
-    # Distance label → spoken phrase fragment
-    DISTANCE_PHRASES = {
-        'near': 'close by',
-        'medium': 'a few steps away',
-        'far': 'far away',
-    }
-
     # Minimum seconds between announcements at different frequency levels
-    # frequency=1.0 → MIN_INTERVAL, frequency=0.0 → MAX_INTERVAL
+    # frequency=1.0 -> MIN_INTERVAL, frequency=0.0 -> MAX_INTERVAL
     MIN_INTERVAL = 1.5   # seconds (fastest announcements)
     MAX_INTERVAL = 8.0   # seconds (slowest announcements)
 
@@ -72,14 +65,13 @@ class VoiceOutput:
         else:
             print("[VoiceOutput] Running in console-only mode (no TTS engine).")
 
-    def announce(self, class_name, direction, distance_label, urgency, frequency):
+    def announce(self, class_name, direction, urgency, frequency):
         """
         Generate and speak a guidance phrase, respecting rate-limiting.
 
         Args:
-            class_name (str): Detected object name (e.g., "wallet").
+            class_name (str): Detected object name (e.g., "phone").
             direction (str): Direction label ('left', 'center', 'right').
-            distance_label (str): Distance label ('near', 'medium', 'far').
             urgency (float): Urgency value from fuzzy system (0-1).
             frequency (float): Announcement frequency from fuzzy system (0-1).
 
@@ -91,7 +83,7 @@ class VoiceOutput:
             return None
 
         # Build the phrase
-        phrase = self._build_phrase(class_name, direction, distance_label, urgency)
+        phrase = self._build_phrase(class_name, direction, urgency)
 
         # Don't repeat the exact same phrase consecutively
         if phrase == self._last_phrase and (time.time() - self._last_announcement_time) < 3.0:
@@ -120,31 +112,25 @@ class VoiceOutput:
         elapsed = time.time() - self._last_announcement_time
         return elapsed >= interval
 
-    def _build_phrase(self, class_name, direction, distance_label, urgency):
+    def _build_phrase(self, class_name, direction, urgency):
         """
         Construct a natural-sounding guidance phrase.
 
         Examples:
-            - "Phone found, directly ahead, close by."
-            - "Wallet detected, to your left, a few steps away."
-            - "Keys nearby, slightly to your right."
+            - "Phone found, directly ahead!"
+            - "Handbag detected, to your left."
+            - "Backpack spotted, to your right."
 
         Args:
             class_name (str): Object name.
             direction (str): 'left', 'center', or 'right'.
-            distance_label (str): 'near', 'medium', or 'far'.
             urgency (float): Controls phrase style (0-1).
 
         Returns:
             str: The guidance phrase.
         """
-        # Object name (capitalize first letter)
         obj = class_name.capitalize()
 
-        # Direction phrase
-        from fuzzy_guidance import generate_direction_phrase
-        # We need the raw angle for the detailed phrase, but we only have
-        # the direction label here. Use a simplified mapping.
         dir_phrases = {
             'left': 'to your left',
             'center': 'directly ahead',
@@ -152,33 +138,23 @@ class VoiceOutput:
         }
         dir_phrase = dir_phrases.get(direction, 'ahead')
 
-        # Distance phrase
-        dist_phrase = self.DISTANCE_PHRASES.get(distance_label, '')
-
         # Construct phrase based on urgency level
         if urgency > 0.7:
-            # High urgency — short, direct
-            if distance_label == 'near':
-                phrase = f"{obj} found, {dir_phrase}, reach forward!"
-            else:
-                phrase = f"{obj} found, {dir_phrase}, {dist_phrase}."
+            phrase = f"{obj} found, {dir_phrase}!"
         elif urgency > 0.4:
-            # Medium urgency — informational
-            phrase = f"{obj} detected, {dir_phrase}, {dist_phrase}."
+            phrase = f"{obj} detected, {dir_phrase}."
         else:
-            # Low urgency — casual
-            phrase = f"Scanning... {obj} spotted {dist_phrase}."
+            phrase = f"Scanning... {obj} spotted {dir_phrase}."
 
         return phrase
 
-    def announce_with_angle(self, class_name, angle_offset, distance_label, urgency, frequency):
+    def announce_with_angle(self, class_name, angle_offset, urgency, frequency):
         """
         Like announce(), but accepts raw angle_offset for a more precise direction phrase.
 
         Args:
             class_name (str): Detected object name.
             angle_offset (float): Raw angle offset (-1 to +1).
-            distance_label (str): 'near', 'medium', 'far'.
             urgency (float): Urgency from fuzzy system (0-1).
             frequency (float): Frequency from fuzzy system (0-1).
 
@@ -192,17 +168,13 @@ class VoiceOutput:
         dir_phrase = generate_direction_phrase(angle_offset)
 
         obj = class_name.capitalize()
-        dist_phrase = self.DISTANCE_PHRASES.get(distance_label, '')
 
         if urgency > 0.7:
-            if distance_label == 'near':
-                phrase = f"{obj} found, {dir_phrase}, reach forward!"
-            else:
-                phrase = f"{obj} found, {dir_phrase}, {dist_phrase}."
+            phrase = f"{obj} found, {dir_phrase}!"
         elif urgency > 0.4:
-            phrase = f"{obj} detected, {dir_phrase}, {dist_phrase}."
+            phrase = f"{obj} detected, {dir_phrase}."
         else:
-            phrase = f"Scanning... {obj} spotted {dist_phrase}."
+            phrase = f"Scanning... {obj} spotted {dir_phrase}."
 
         if phrase == self._last_phrase and (time.time() - self._last_announcement_time) < 3.0:
             return None
@@ -266,25 +238,24 @@ if __name__ == "__main__":
 
     voice = VoiceOutput(rate=160, volume=0.8)
 
-    # Test phrase generation
     test_cases = [
-        ("phone", "center", "near", 0.9, 0.8),
-        ("wallet", "left", "medium", 0.5, 0.4),
-        ("keys", "right", "far", 0.2, 0.2),
-        ("watch", "center", "near", 0.85, 0.9),
-        ("glasses", "left", "medium", 0.6, 0.5),
+        ("mobile phone", "center", 0.9, 0.8),
+        ("handbag", "left", 0.5, 0.4),
+        ("backpack", "right", 0.2, 0.2),
+        ("umbrella", "center", 0.85, 0.9),
+        ("luggage", "left", 0.6, 0.5),
     ]
 
     voice.announce_startup()
     time.sleep(2)
 
-    for cls, direction, dist, urg, freq in test_cases:
-        phrase = voice.announce(cls, direction, dist, urg, freq)
+    for cls, direction, urg, freq in test_cases:
+        phrase = voice.announce(cls, direction, urg, freq)
         if phrase:
-            print(f"  → Announced: {phrase}")
+            print(f"  -> Announced: {phrase}")
         else:
-            print(f"  → Rate-limited (skipped)")
-        time.sleep(2)  # wait between announcements for demo
+            print(f"  -> Rate-limited (skipped)")
+        time.sleep(2)
 
     voice.shutdown()
     print("\nDone.")

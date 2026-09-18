@@ -1,8 +1,8 @@
 """
 pipeline.py — End-to-End Real-Time Pipeline
 
-Ties together: Camera → Detection → Feature Extraction → ANFIS Distance →
-Fuzzy Guidance → Voice Output into a continuous real-time loop.
+Ties together: Camera -> Detection -> Feature Extraction -> Fuzzy Guidance -> Voice Output
+into a continuous real-time loop.
 
 This is the main entry point for running the belonging detector system.
 """
@@ -25,7 +25,6 @@ except ImportError:
 
 from detect import ObjectDetector, CLASS_NAMES
 from feature_extraction import FeatureExtractor
-from anfis_distance import ANFISDistanceEstimator
 from fuzzy_guidance import FuzzyGuidanceSystem, generate_direction_phrase
 from voice_output import VoiceOutput
 
@@ -37,15 +36,13 @@ class BelongingDetectorPipeline:
     Flow per frame:
         1. Capture frame from camera
         2. Run YOLOv8 object detection
-        3. Extract features (area ratio, angle, confidence, stability)
-        4. Estimate distance via ANFIS
-        5. Compute guidance via Fuzzy Inference System
-        6. Speak guidance via Text-to-Speech
+        3. Extract features (angle_offset, confidence, temporal_stability)
+        4. Compute guidance via Fuzzy Inference System (urgency, frequency, direction)
+        5. Speak guidance via Text-to-Speech
     """
 
     def __init__(self, 
                  model_path=None, 
-                 anfis_path=None,
                  camera_index=0,
                  confidence_threshold=0.35,
                  target_class=None,
@@ -54,7 +51,6 @@ class BelongingDetectorPipeline:
         """
         Args:
             model_path (str): Path to trained YOLOv8 weights (best.pt).
-            anfis_path (str): Path to trained ANFIS model (.pkl).
             camera_index (int): Camera device index for OpenCV.
             confidence_threshold (float): Minimum detection confidence.
             target_class (str): If set, only announce this class (e.g., "phone").
@@ -71,29 +67,19 @@ class BelongingDetectorPipeline:
         print("=" * 60)
 
         # Initialize components
-        print("\n[1/5] Loading object detector...")
+        print("\n[1/4] Loading object detector...")
         self.detector = ObjectDetector(
             model_path=model_path,
             confidence_threshold=confidence_threshold,
         )
 
-        print("[2/5] Initializing feature extractor...")
+        print("[2/4] Initializing feature extractor...")
         self.feature_extractor = FeatureExtractor(history_length=history_length)
 
-        print("[3/5] Loading ANFIS distance model...")
-        self.anfis = ANFISDistanceEstimator()
-        anfis_path = anfis_path or self.anfis.DEFAULT_MODEL_PATH
-        if os.path.exists(anfis_path):
-            self.anfis.load(anfis_path)
-        else:
-            print(f"  [!] ANFIS model not found at {anfis_path}")
-            print(f"      Using fallback distance estimation (inverse-sqrt heuristic).")
-            self.anfis._is_trained = True  # Enable fallback mode
-
-        print("[4/5] Initializing fuzzy guidance system...")
+        print("[3/4] Initializing fuzzy guidance system...")
         self.fuzzy = FuzzyGuidanceSystem()
 
-        print("[5/5] Initializing voice output...")
+        print("[4/4] Initializing voice output...")
         self.voice = VoiceOutput(rate=160, volume=0.9)
 
         self._running = False
@@ -160,7 +146,7 @@ class BelongingDetectorPipeline:
                 # Update tracking history
                 self.feature_extractor.update_history(detections)
 
-                # ── Step 3-5: ANFIS + Fuzzy + Voice for each detection ─────
+                # ── Step 3-4: Fuzzy Guidance + Voice for each detection ────
                 display_frame = frame.copy() if self.show_gui else None
 
                 if len(features_list) == 0:
@@ -169,15 +155,10 @@ class BelongingDetectorPipeline:
                         self.voice.announce_no_objects()
                 else:
                     # Process the highest-confidence detection
-                    # (or all — but for voice output, we pick the best one to avoid confusion)
                     best_features = max(features_list, key=lambda f: f['confidence'])
 
-                    # ANFIS distance estimation
-                    distance_cm = self.anfis.predict(best_features['box_area_ratio'])
-
-                    # Fuzzy guidance
+                    # Fuzzy guidance computation
                     guidance = self.fuzzy.compute(
-                        distance_cm=distance_cm,
                         angle_offset=best_features['angle_offset'],
                         confidence=best_features['confidence'],
                         stability=best_features['temporal_stability'],
@@ -188,7 +169,6 @@ class BelongingDetectorPipeline:
                         self.voice.announce_with_angle(
                             class_name=best_features['class_name'],
                             angle_offset=best_features['angle_offset'],
-                            distance_label=guidance['distance_label'],
                             urgency=guidance['urgency'],
                             frequency=guidance['frequency'],
                         )
@@ -249,12 +229,8 @@ class BelongingDetectorPipeline:
             # Bounding box
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
-            # Distance estimation
-            distance_cm = self.anfis.predict(feat['box_area_ratio'])
-            dist_label = 'near' if distance_cm < 60 else ('medium' if distance_cm < 150 else 'far')
-
-            # Label with class, confidence, and distance
-            label = f"{det.class_name} {det.confidence:.2f} | {distance_cm:.0f}cm ({dist_label})"
+            # Label with class, confidence, and angle
+            label = f"{det.class_name} {det.confidence:.2f} | angle:{feat['angle_offset']:.2f}"
             (lw, lh), baseline = cv2.getTextSize(
                 label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
             )
@@ -300,10 +276,6 @@ def main():
         help="Path to trained YOLOv8 weights (default: models/detector/best.pt)",
     )
     parser.add_argument(
-        "--anfis", type=str, default=None,
-        help="Path to trained ANFIS distance model (default: models/anfis_distance_model.pkl)",
-    )
-    parser.add_argument(
         "--camera", type=int, default=0,
         help="Camera device index (default: 0)",
     )
@@ -329,7 +301,6 @@ def main():
 
     pipeline = BelongingDetectorPipeline(
         model_path=args.model,
-        anfis_path=args.anfis,
         camera_index=args.camera,
         confidence_threshold=args.confidence,
         target_class=args.target,
