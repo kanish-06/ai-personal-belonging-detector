@@ -1,0 +1,15 @@
+# YOLOv8 dataset configuration
+# Paths are relative to this file's location
+train: images/train
+val: images/val
+
+# Number of classes
+nc: 5
+
+# Class names (order matches class IDs 0-4)
+names:
+  0: keys
+  1: wallet
+  2: phone
+  3: watch
+  4: glasses

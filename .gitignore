@@ -1,0 +1,35 @@
+# Python / Virtual Environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# YOLOv8 Caches and Runs
+*.cache
+runs/
+yolov8n.pt
+
+# Datasets and Downloads
+raw_download/
+dataset/images/
+dataset/labels/
+!dataset/classes.txt
+!dataset/data.yaml
+!dataset/remap_dataset.py
+
+# Models
+# (We might want to track the best.pt but exclude intermediate checkpoints)
+models/detector/*.pt
+!models/detector/best.pt
+*.pkl
+
+# IDE / OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
