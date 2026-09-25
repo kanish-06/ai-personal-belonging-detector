@@ -7,8 +7,11 @@ announcement timing/rate-limiting so the user isn't overwhelmed.
 Uses pyttsx3 (fully offline TTS) as the primary engine.
 """
 
+import os
+import sys
 import time
 import threading
+import queue
 
 try:
     import pyttsx3
@@ -16,17 +19,19 @@ try:
 except ImportError:
     HAS_PYTTSX3 = False
     print("[WARNING] pyttsx3 not installed. Voice output will print to console only.")
-    print("         Install with: pip install scikit-fuzzy / pyttsx3")
+    print("         Install with: pip install pyttsx3")
 
 
 class VoiceOutput:
     """
     Manages spoken voice guidance for the belonging detector.
-    
+
     Features:
     - Rate-limiting: respects fuzzy frequency output to avoid over-announcing
     - Non-blocking: speaks in a background thread so detection loop isn't paused
     - Phrase construction: builds natural-sounding guidance phrases
+    - Thread-safe: pyttsx3 engine is created and used entirely within a
+      dedicated worker thread to avoid cross-thread COM/driver issues.
     """
 
     # Minimum seconds between announcements at different frequency levels
@@ -41,28 +46,29 @@ class VoiceOutput:
             volume (float): Volume level (0.0 to 1.0).
             voice_index (int): Index of the TTS voice to use (0 = default).
         """
-        self._engine = None
-        self._lock = threading.Lock()
         self._last_announcement_time = 0.0
         self._last_phrase = ""
         self._speaking = False
+        self._has_engine = False
+
+        # Queue-based architecture: main thread enqueues text,
+        # worker thread dequeues and speaks using its own pyttsx3 engine.
+        self._speech_queue = queue.Queue()
+        self._shutdown_event = threading.Event()
 
         if HAS_PYTTSX3:
-            try:
-                self._engine = pyttsx3.init()
-                self._engine.setProperty('rate', rate)
-                self._engine.setProperty('volume', volume)
-
-                # Try to set a specific voice
-                voices = self._engine.getProperty('voices')
-                if voices and voice_index < len(voices):
-                    self._engine.setProperty('voice', voices[voice_index].id)
-
-                print(f"[VoiceOutput] TTS engine initialized (rate={rate}, volume={volume})")
-            except Exception as e:
-                print(f"[VoiceOutput] Failed to initialize TTS engine: {e}")
-                self._engine = None
+            self._tts_thread = threading.Thread(
+                target=self._tts_worker,
+                args=(rate, volume, voice_index),
+                daemon=True,
+            )
+            self._tts_thread.start()
+            # Give the worker a moment to initialize
+            time.sleep(0.3)
+            self._has_engine = True
+            print(f"[VoiceOutput] TTS engine initialized (rate={rate}, volume={volume})")
         else:
+            self._tts_thread = None
             print("[VoiceOutput] Running in console-only mode (no TTS engine).")
 
     def announce(self, class_name, direction, urgency, frequency):
@@ -164,6 +170,10 @@ class VoiceOutput:
         if not self._should_announce(frequency):
             return None
 
+        # Use CWD-independent import so this works regardless of launch directory
+        _src_dir = os.path.dirname(os.path.abspath(__file__))
+        if _src_dir not in sys.path:
+            sys.path.insert(0, _src_dir)
         from fuzzy_guidance import generate_direction_phrase
         dir_phrase = generate_direction_phrase(angle_offset)
 
@@ -196,21 +206,48 @@ class VoiceOutput:
         """
         print(f"[VOICE] {text}")
 
-        if self._engine is not None and not self._speaking:
-            thread = threading.Thread(target=self._speak_thread, args=(text,), daemon=True)
-            thread.start()
+        if self._has_engine and not self._speaking:
+            # Enqueue for the dedicated TTS worker thread
+            self._speech_queue.put(text)
 
-    def _speak_thread(self, text):
-        """Run TTS in a background thread to avoid blocking the main loop."""
-        with self._lock:
+    def _tts_worker(self, rate, volume, voice_index):
+        """
+        Dedicated worker thread that owns the pyttsx3 engine.
+        pyttsx3 is not thread-safe — the engine must be created and used
+        entirely within a single thread.
+        """
+        try:
+            engine = pyttsx3.init()
+            engine.setProperty('rate', rate)
+            engine.setProperty('volume', volume)
+            voices = engine.getProperty('voices')
+            if voices and voice_index < len(voices):
+                engine.setProperty('voice', voices[voice_index].id)
+        except Exception as e:
+            print(f"[VoiceOutput] Failed to initialize TTS engine: {e}")
+            self._has_engine = False
+            return
+
+        while not self._shutdown_event.is_set():
+            try:
+                text = self._speech_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+
             self._speaking = True
             try:
-                self._engine.say(text)
-                self._engine.runAndWait()
+                engine.say(text)
+                engine.runAndWait()
             except Exception as e:
                 print(f"[VoiceOutput] TTS error: {e}")
             finally:
                 self._speaking = False
+
+        # Clean shutdown of the engine
+        try:
+            engine.stop()
+        except Exception:
+            pass
 
     def announce_startup(self):
         """Speak a startup message."""
@@ -223,12 +260,10 @@ class VoiceOutput:
             self._last_announcement_time = time.time()
 
     def shutdown(self):
-        """Clean up the TTS engine."""
-        if self._engine is not None:
-            try:
-                self._engine.stop()
-            except Exception:
-                pass
+        """Clean up the TTS engine and worker thread."""
+        self._shutdown_event.set()
+        if self._tts_thread is not None:
+            self._tts_thread.join(timeout=3.0)
 
 
 # ─── Main (test) ──────────────────────────────────────────────────────────────
