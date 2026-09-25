@@ -85,6 +85,7 @@ class BelongingDetectorPipeline:
         self._running = False
         self._frame_count = 0
         self._fps = 0.0
+        self._fps_frame_count = 0  # Separate counter for FPS calculation
 
         print("\n" + "=" * 60)
         print("  Pipeline ready!")
@@ -93,7 +94,7 @@ class BelongingDetectorPipeline:
     def run(self):
         """
         Start the real-time detection and guidance loop.
-        Press 'q' to quit (when GUI is enabled).
+        Press 'q' to quit (when GUI is enabled), or Ctrl+C in headless mode.
         """
         if not HAS_CV2:
             print("[ERROR] OpenCV is required for the pipeline.")
@@ -115,20 +116,32 @@ class BelongingDetectorPipeline:
         else:
             print(f"Searching for: all objects ({', '.join(CLASS_NAMES.values())})")
 
+        if not self.show_gui:
+            print("Running in headless mode. Press Ctrl+C to quit.")
+
         # Announce startup
         self.voice.announce_startup()
 
         self._running = True
         fps_timer = time.time()
+        consecutive_read_failures = 0
+        MAX_READ_FAILURES = 30  # ~1 second of failures at 30fps before giving up
 
         try:
             while self._running:
                 ret, frame = cap.read()
                 if not ret:
-                    print("[WARNING] Failed to read frame from camera.")
+                    consecutive_read_failures += 1
+                    if consecutive_read_failures >= MAX_READ_FAILURES:
+                        print("[ERROR] Too many consecutive frame read failures. "
+                              "Camera may be disconnected.")
+                        break
+                    time.sleep(0.033)  # Brief pause before retry
                     continue
 
+                consecutive_read_failures = 0
                 self._frame_count += 1
+                self._fps_frame_count += 1
 
                 # ── Step 1: Object Detection ───────────────────────────────
                 detections = self.detector.detect(frame, self.confidence_threshold)
@@ -180,10 +193,10 @@ class BelongingDetectorPipeline:
                         frame_width, frame_height,
                     )
 
-                    # FPS counter
+                    # FPS counter (uses separate counter that resets each second)
                     if time.time() - fps_timer >= 1.0:
-                        self._fps = self._frame_count / (time.time() - fps_timer + 1e-8)
-                        self._frame_count = 0
+                        self._fps = self._fps_frame_count / (time.time() - fps_timer + 1e-8)
+                        self._fps_frame_count = 0
                         fps_timer = time.time()
 
                     cv2.putText(
@@ -200,6 +213,9 @@ class BelongingDetectorPipeline:
                     elif key == ord('r'):
                         self.feature_extractor.reset()
                         print("[Pipeline] Tracking history reset.")
+                else:
+                    # Headless mode: throttle to ~30fps to avoid burning CPU
+                    time.sleep(0.033)
 
         except KeyboardInterrupt:
             print("\n[Pipeline] Interrupted by user.")
