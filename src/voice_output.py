@@ -63,10 +63,14 @@ class VoiceOutput:
                 daemon=True,
             )
             self._tts_thread.start()
-            # Give the worker a moment to initialize
-            time.sleep(0.3)
-            self._has_engine = True
-            print(f"[VoiceOutput] TTS engine initialized (rate={rate}, volume={volume})")
+            
+            # Wait for worker thread to finish initialization (up to 2 seconds)
+            start_time = time.time()
+            while self._tts_thread.is_alive() and not self._has_engine and (time.time() - start_time) < 2.0:
+                time.sleep(0.05)
+                
+            if not self._has_engine:
+                print("[VoiceOutput] Warning: TTS engine initialization timed out or failed.")
         else:
             self._tts_thread = None
             print("[VoiceOutput] Running in console-only mode (no TTS engine).")
@@ -206,8 +210,14 @@ class VoiceOutput:
         """
         print(f"[VOICE] {text}")
 
-        if self._has_engine and not self._speaking:
-            # Enqueue for the dedicated TTS worker thread
+        if self._has_engine:
+            # Enqueue for the dedicated TTS worker thread.
+            # Clear any older pending messages so we only speak the freshest guidance.
+            while not self._speech_queue.empty():
+                try:
+                    self._speech_queue.get_nowait()
+                except queue.Empty:
+                    break
             self._speech_queue.put(text)
 
     def _tts_worker(self, rate, volume, voice_index):
@@ -216,6 +226,13 @@ class VoiceOutput:
         pyttsx3 is not thread-safe — the engine must be created and used
         entirely within a single thread.
         """
+        if sys.platform == "win32":
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()
+            except ImportError:
+                pass
+
         try:
             engine = pyttsx3.init()
             engine.setProperty('rate', rate)
@@ -223,6 +240,8 @@ class VoiceOutput:
             voices = engine.getProperty('voices')
             if voices and voice_index < len(voices):
                 engine.setProperty('voice', voices[voice_index].id)
+            self._has_engine = True
+            print(f"[VoiceOutput] TTS engine initialized (rate={rate}, volume={volume})")
         except Exception as e:
             print(f"[VoiceOutput] Failed to initialize TTS engine: {e}")
             self._has_engine = False
