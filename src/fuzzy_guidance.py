@@ -51,33 +51,33 @@ class FuzzyGuidanceSystem:
 
         # Angle offset (-1 to +1): Left / Center / Right
         self.angle = ctrl.Antecedent(np.arange(-1.0, 1.01, 0.01), 'angle')
-        self.angle['left'] = fuzz.trapmf(self.angle.universe, [-1.0, -1.0, -0.5, -0.1])
+        self.angle['left'] = fuzz.trapmf(self.angle.universe, [-1.0, -1.0, -0.4, -0.1])
         self.angle['center'] = fuzz.trimf(self.angle.universe, [-0.3, 0.0, 0.3])
-        self.angle['right'] = fuzz.trapmf(self.angle.universe, [0.1, 0.5, 1.0, 1.0])
+        self.angle['right'] = fuzz.trapmf(self.angle.universe, [0.1, 0.4, 1.0, 1.0])
 
         # Confidence (0 to 1): Low / Medium / High
         self.confidence = ctrl.Antecedent(np.arange(0, 1.01, 0.01), 'confidence')
         self.confidence['low'] = fuzz.trapmf(self.confidence.universe, [0, 0, 0.3, 0.5])
-        self.confidence['medium'] = fuzz.trimf(self.confidence.universe, [0.35, 0.55, 0.75])
-        self.confidence['high'] = fuzz.trapmf(self.confidence.universe, [0.6, 0.8, 1.0, 1.0])
+        self.confidence['medium'] = fuzz.trimf(self.confidence.universe, [0.3, 0.5, 0.7])
+        self.confidence['high'] = fuzz.trapmf(self.confidence.universe, [0.5, 0.7, 1.0, 1.0])
 
         # Stability (0 to 1): Unstable / Stable
         self.stability = ctrl.Antecedent(np.arange(0, 1.01, 0.01), 'stability')
-        self.stability['unstable'] = fuzz.trapmf(self.stability.universe, [0, 0, 0.25, 0.5])
-        self.stability['stable'] = fuzz.trapmf(self.stability.universe, [0.4, 0.6, 1.0, 1.0])
+        self.stability['unstable'] = fuzz.trapmf(self.stability.universe, [0, 0, 0.3, 0.6])
+        self.stability['stable'] = fuzz.trapmf(self.stability.universe, [0.4, 0.7, 1.0, 1.0])
 
         # ─── Output Variables (Consequents) ─────────────────────────────────
 
         # Urgency (0 to 1): how urgently to speak
         self.urgency = ctrl.Consequent(np.arange(0, 1.01, 0.01), 'urgency')
-        self.urgency['low'] = fuzz.trimf(self.urgency.universe, [0, 0.15, 0.35])
-        self.urgency['medium'] = fuzz.trimf(self.urgency.universe, [0.25, 0.5, 0.75])
-        self.urgency['high'] = fuzz.trimf(self.urgency.universe, [0.65, 0.85, 1.0])
+        self.urgency['low'] = fuzz.trapmf(self.urgency.universe, [0, 0, 0.2, 0.4])
+        self.urgency['medium'] = fuzz.trimf(self.urgency.universe, [0.2, 0.5, 0.8])
+        self.urgency['high'] = fuzz.trapmf(self.urgency.universe, [0.6, 0.8, 1.0, 1.0])
 
         # Frequency (0 to 1): how often to announce (0=rarely, 1=frequently)
         self.frequency = ctrl.Consequent(np.arange(0, 1.01, 0.01), 'frequency')
-        self.frequency['slow'] = fuzz.trimf(self.frequency.universe, [0, 0.2, 0.45])
-        self.frequency['fast'] = fuzz.trimf(self.frequency.universe, [0.55, 0.8, 1.0])
+        self.frequency['slow'] = fuzz.trapmf(self.frequency.universe, [0, 0, 0.3, 0.6])
+        self.frequency['fast'] = fuzz.trapmf(self.frequency.universe, [0.4, 0.7, 1.0, 1.0])
 
         # ─── Rules ─────────────────────────────────────────────────────────
 
