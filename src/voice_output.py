@@ -206,12 +206,6 @@ class VoiceOutput:
         print(f"[VOICE] {text}")
 
         if self._has_engine:
-            # Drain any stale pending phrase from the queue so only the latest request remains pending
-            while not self._speech_queue.empty():
-                try:
-                    self._speech_queue.get_nowait()
-                except queue.Empty:
-                    break
             self._speech_queue.put(text)
 
     def _tts_worker(self, rate, volume, voice_index):
@@ -220,8 +214,14 @@ class VoiceOutput:
         pyttsx3 is not thread-safe — the engine must be created and used
         entirely within a single thread.
         """
-        import pythoncom
-        pythoncom.CoInitialize()  # Windows COM initialization for secondary threads
+        if sys.platform == "win32":
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()  # Windows COM initialization for secondary threads
+            except ImportError:
+                pass
+
+        engine = None
         try:
             engine = pyttsx3.init()
             engine.setProperty('rate', rate)
@@ -238,7 +238,7 @@ class VoiceOutput:
             self._init_event.set()
 
         # If engine failed to initialize, exit thread
-        if not self._has_engine:
+        if not self._has_engine or engine is None:
             return
 
         while not self._shutdown_event.is_set():
@@ -249,10 +249,29 @@ class VoiceOutput:
 
             self._speaking = True
             try:
+                # Reset pyttsx3 driver proxy busy state to avoid premature stop/purge.
+                # In pyttsx3 SAPI5 driver, runAndWait() leaves proxy._busy = False.
+                # Subsequent say() calls fire immediately before startLoop() enters,
+                # causing startLoop's first iteration to trigger endLoop() and purge audio.
+                if hasattr(engine, 'proxy') and hasattr(engine.proxy, 'setBusy'):
+                    engine.proxy.setBusy(True)
                 engine.say(text)
                 engine.runAndWait()
             except Exception as e:
                 print(f"[VoiceOutput] TTS error: {e}")
+                try:
+                    engine.stop()
+                except Exception:
+                    pass
+                try:
+                    engine = pyttsx3.init()
+                    engine.setProperty('rate', rate)
+                    engine.setProperty('volume', volume)
+                    voices = engine.getProperty('voices')
+                    if voices and voice_index < len(voices):
+                        engine.setProperty('voice', voices[voice_index].id)
+                except Exception:
+                    pass
             finally:
                 self._speaking = False
 
@@ -262,9 +281,19 @@ class VoiceOutput:
         except Exception:
             pass
 
+        if sys.platform == "win32":
+            try:
+                import pythoncom
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
+
     def announce_startup(self):
         """Speak a startup message."""
-        self._speak("Belonging detector is ready. Point the camera to search.")
+        phrase = "Belonging detector is ready. Point the camera to search."
+        self._last_announcement_time = time.time()
+        self._last_phrase = phrase
+        self._speak(phrase)
 
     def announce_no_objects(self):
         """Speak a 'nothing found' message (rate-limited)."""
