@@ -1,92 +1,9 @@
 {
-  "timestamp": "2026-09-29T00:04:36.633268",
+  "timestamp": "2026-09-29T02:16:58.864158",
   "benchmarks": {
     "detector_test_images": {
-      "status": "PASS",
-      "n_images": 4,
-      "n_with_expected_class": 4,
-      "n_correctly_detected": 4,
-      "accuracy_on_labeled": 1.0,
-      "avg_latency_ms": 966.39,
-      "max_latency_ms": 3710.84,
-      "per_image": [
-        {
-          "image": "glasses.jpeg",
-          "expected_class": "glasses",
-          "n_detections": 1,
-          "detections": [
-            {
-              "class": "glasses",
-              "confidence": 0.8742,
-              "bbox_xyxy": [
-                0.7,
-                152.3,
-                447.0,
-                300.0
-              ]
-            }
-          ],
-          "found_expected": true,
-          "latency_ms": 3710.84
-        },
-        {
-          "image": "glasses2.jpeg",
-          "expected_class": "glasses",
-          "n_detections": 1,
-          "detections": [
-            {
-              "class": "glasses",
-              "confidence": 0.801,
-              "bbox_xyxy": [
-                0.0,
-                116.9,
-                445.9,
-                416.5
-              ]
-            }
-          ],
-          "found_expected": true,
-          "latency_ms": 74.49
-        },
-        {
-          "image": "wallet.jpg",
-          "expected_class": "wallet",
-          "n_detections": 1,
-          "detections": [
-            {
-              "class": "wallet",
-              "confidence": 0.9183,
-              "bbox_xyxy": [
-                134.0,
-                46.2,
-                427.4,
-                330.4
-              ]
-            }
-          ],
-          "found_expected": true,
-          "latency_ms": 66.59
-        },
-        {
-          "image": "wallet2.jpeg",
-          "expected_class": "wallet",
-          "n_detections": 1,
-          "detections": [
-            {
-              "class": "wallet",
-              "confidence": 0.2724,
-              "bbox_xyxy": [
-                96.9,
-                110.4,
-                438.9,
-                383.1
-              ]
-            }
-          ],
-          "found_expected": true,
-          "latency_ms": 13.65
-        }
-      ]
+      "status": "SKIP",
+      "reason": "test-data/ directory not found"
     },
     "prior_detector_eval": {
       "timestamp": "2026-09-29T00:01:25.105188",
@@ -302,13 +219,13 @@
     "fis_latency": {
       "status": "PASS",
       "n_calls": 1000,
-      "mean_ms": 3.8514,
-      "median_ms": 3.7647,
-      "p95_ms": 6.181,
-      "p99_ms": 7.5555,
-      "min_ms": 0.0736,
-      "max_ms": 11.9138,
-      "total_fps_capacity": 259.6
+      "mean_ms": 1.9217,
+      "median_ms": 1.929,
+      "p95_ms": 2.5106,
+      "p99_ms": 3.6982,
+      "min_ms": 0.054,
+      "max_ms": 6.7224,
+      "total_fps_capacity": 520.4
     },
     "voice_logic": {
       "status": "PASS",
@@ -500,20 +417,20 @@
       "status": "PASS",
       "n_frames": 50,
       "detection": {
-        "mean_ms": 19.98,
-        "median_ms": 16.19,
-        "p95_ms": 30.97
+        "mean_ms": 48.06,
+        "median_ms": 29.58,
+        "p95_ms": 33.53
       },
       "fis": {
-        "mean_ms": 3.57,
-        "median_ms": 3.42,
-        "p95_ms": 4.82
+        "mean_ms": 2.84,
+        "median_ms": 2.96,
+        "p95_ms": 3.37
       },
       "end_to_end": {
-        "mean_ms": 23.64,
-        "median_ms": 19.64,
-        "p95_ms": 35.47,
-        "fps": 42.3
+        "mean_ms": 50.98,
+        "median_ms": 32.54,
+        "p95_ms": 36.75,
+        "fps": 19.6
       }
     }
   },

@@ -100,8 +100,15 @@ class BelongingDetectorPipeline:
             print("[ERROR] OpenCV is required for the pipeline.")
             return
 
-        # Open camera
-        cap = cv2.VideoCapture(self.camera_index)
+        # Open camera (on Windows, CAP_DSHOW is preferred for reliable webcam capture)
+        if sys.platform == "win32":
+            cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
+            if not cap.isOpened() or not cap.read()[0]:
+                cap.release()
+                cap = cv2.VideoCapture(self.camera_index)
+        else:
+            cap = cv2.VideoCapture(self.camera_index)
+
         if not cap.isOpened():
             print(f"[ERROR] Could not open camera at index {self.camera_index}")
             return
