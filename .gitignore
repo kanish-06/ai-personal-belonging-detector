@@ -21,6 +21,7 @@ dataset/labels/
 !dataset/classes.txt
 !dataset/data.yaml
 !dataset/remap_dataset.py
+test-data/
 
 # Models
 # (We might want to track the best.pt but exclude intermediate checkpoints)

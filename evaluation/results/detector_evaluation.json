@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-09-18T20:35:23.906392",
+  "timestamp": "2026-09-29T00:01:25.105188",
   "model_path": "C:\\sem-5\\NFT\\belonging-detector\\models\\detector\\best.pt",
   "data_yaml": "C:\\sem-5\\NFT\\belonging-detector\\dataset\\data.yaml",
   "overall": {

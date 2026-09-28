@@ -1,0 +1,521 @@
+{
+  "timestamp": "2026-09-29T00:04:36.633268",
+  "benchmarks": {
+    "detector_test_images": {
+      "status": "PASS",
+      "n_images": 4,
+      "n_with_expected_class": 4,
+      "n_correctly_detected": 4,
+      "accuracy_on_labeled": 1.0,
+      "avg_latency_ms": 966.39,
+      "max_latency_ms": 3710.84,
+      "per_image": [
+        {
+          "image": "glasses.jpeg",
+          "expected_class": "glasses",
+          "n_detections": 1,
+          "detections": [
+            {
+              "class": "glasses",
+              "confidence": 0.8742,
+              "bbox_xyxy": [
+                0.7,
+                152.3,
+                447.0,
+                300.0
+              ]
+            }
+          ],
+          "found_expected": true,
+          "latency_ms": 3710.84
+        },
+        {
+          "image": "glasses2.jpeg",
+          "expected_class": "glasses",
+          "n_detections": 1,
+          "detections": [
+            {
+              "class": "glasses",
+              "confidence": 0.801,
+              "bbox_xyxy": [
+                0.0,
+                116.9,
+                445.9,
+                416.5
+              ]
+            }
+          ],
+          "found_expected": true,
+          "latency_ms": 74.49
+        },
+        {
+          "image": "wallet.jpg",
+          "expected_class": "wallet",
+          "n_detections": 1,
+          "detections": [
+            {
+              "class": "wallet",
+              "confidence": 0.9183,
+              "bbox_xyxy": [
+                134.0,
+                46.2,
+                427.4,
+                330.4
+              ]
+            }
+          ],
+          "found_expected": true,
+          "latency_ms": 66.59
+        },
+        {
+          "image": "wallet2.jpeg",
+          "expected_class": "wallet",
+          "n_detections": 1,
+          "detections": [
+            {
+              "class": "wallet",
+              "confidence": 0.2724,
+              "bbox_xyxy": [
+                96.9,
+                110.4,
+                438.9,
+                383.1
+              ]
+            }
+          ],
+          "found_expected": true,
+          "latency_ms": 13.65
+        }
+      ]
+    },
+    "prior_detector_eval": {
+      "timestamp": "2026-09-29T00:01:25.105188",
+      "model_path": "C:\\sem-5\\NFT\\belonging-detector\\models\\detector\\best.pt",
+      "data_yaml": "C:\\sem-5\\NFT\\belonging-detector\\dataset\\data.yaml",
+      "overall": {
+        "mAP50": 0.6405737163119417,
+        "mAP50_95": 0.4595168064801045,
+        "precision": 0.7026717260612155,
+        "recall": 0.7240419217801308
+      },
+      "per_class": {
+        "keys": {
+          "precision": 0.5333333333333333,
+          "recall": 0.41304347826086957,
+          "mAP50": 0.33241132279221514,
+          "mAP50_95": 0.20375067089179835
+        },
+        "wallet": {
+          "precision": 0.8536585365853658,
+          "recall": 0.9433962264150944,
+          "mAP50": 0.9227744872755962,
+          "mAP50_95": 0.7085912949698349
+        },
+        "phone": {
+          "precision": 0.75,
+          "recall": 0.6888888888888889,
+          "mAP50": 0.6524121679845751,
+          "mAP50_95": 0.4775729291724903
+        },
+        "watch": {
+          "precision": 0.5051546391752577,
+          "recall": 0.632258064516129,
+          "mAP50": 0.35980323780287804,
+          "mAP50_95": 0.17811180390682518
+        },
+        "glasses": {
+          "precision": 0.8712121212121212,
+          "recall": 0.9426229508196722,
+          "mAP50": 0.9354673657044441,
+          "mAP50_95": 0.7295573334595739
+        }
+      }
+    },
+    "fis_correctness": {
+      "status": "PASS",
+      "n_cases": 8,
+      "passed": 8,
+      "failed": 0,
+      "details": [
+        {
+          "description": "High conf, center, stable \u2192 HIGH",
+          "inputs": {
+            "angle": 0.0,
+            "confidence": 0.92,
+            "stability": 0.9
+          },
+          "outputs": {
+            "urgency": 0.8333,
+            "frequency": 0.7833,
+            "direction": "center",
+            "should_announce": true
+          },
+          "expected_urgency_range": [
+            0.65,
+            1.0
+          ],
+          "expected_announce": true,
+          "pass": true
+        },
+        {
+          "description": "High conf, far left, stable \u2192 HIGH",
+          "inputs": {
+            "angle": -0.7,
+            "confidence": 0.88,
+            "stability": 0.85
+          },
+          "outputs": {
+            "urgency": 0.8333,
+            "frequency": 0.7833,
+            "direction": "left",
+            "should_announce": true
+          },
+          "expected_urgency_range": [
+            0.65,
+            1.0
+          ],
+          "expected_announce": true,
+          "pass": true
+        },
+        {
+          "description": "High conf, far right, stable \u2192 HIGH",
+          "inputs": {
+            "angle": 0.7,
+            "confidence": 0.9,
+            "stability": 0.8
+          },
+          "outputs": {
+            "urgency": 0.8333,
+            "frequency": 0.7833,
+            "direction": "right",
+            "should_announce": true
+          },
+          "expected_urgency_range": [
+            0.65,
+            1.0
+          ],
+          "expected_announce": true,
+          "pass": true
+        },
+        {
+          "description": "Med conf, center, stable \u2192 MEDIUM",
+          "inputs": {
+            "angle": 0.0,
+            "confidence": 0.55,
+            "stability": 0.7
+          },
+          "outputs": {
+            "urgency": 0.5,
+            "frequency": 0.2167,
+            "direction": "center",
+            "should_announce": true
+          },
+          "expected_urgency_range": [
+            0.25,
+            0.75
+          ],
+          "expected_announce": true,
+          "pass": true
+        },
+        {
+          "description": "High conf, unstable \u2192 MEDIUM",
+          "inputs": {
+            "angle": 0.0,
+            "confidence": 0.85,
+            "stability": 0.15
+          },
+          "outputs": {
+            "urgency": 0.5,
+            "frequency": 0.2167,
+            "direction": "center",
+            "should_announce": true
+          },
+          "expected_urgency_range": [
+            0.2,
+            0.75
+          ],
+          "expected_announce": true,
+          "pass": true
+        },
+        {
+          "description": "Low conf, stable \u2192 LOW/suppress",
+          "inputs": {
+            "angle": 0.0,
+            "confidence": 0.2,
+            "stability": 0.8
+          },
+          "outputs": {
+            "urgency": 0.1667,
+            "frequency": 0.2167,
+            "direction": "center",
+            "should_announce": "False"
+          },
+          "expected_urgency_range": [
+            0.0,
+            0.35
+          ],
+          "expected_announce": false,
+          "pass": "True"
+        },
+        {
+          "description": "Low conf, unstable \u2192 suppress",
+          "inputs": {
+            "angle": 0.0,
+            "confidence": 0.1,
+            "stability": 0.1
+          },
+          "outputs": {
+            "urgency": 0.1667,
+            "frequency": 0.2167,
+            "direction": "center",
+            "should_announce": "False"
+          },
+          "expected_urgency_range": [
+            0.0,
+            0.35
+          ],
+          "expected_announce": false,
+          "pass": "True"
+        },
+        {
+          "description": "Borderline inputs \u2192 any",
+          "inputs": {
+            "angle": -0.3,
+            "confidence": 0.45,
+            "stability": 0.4
+          },
+          "outputs": {
+            "urgency": 0.1704,
+            "frequency": 0.2204,
+            "direction": "left",
+            "should_announce": true
+          },
+          "expected_urgency_range": [
+            0.0,
+            0.55
+          ],
+          "expected_announce": null,
+          "pass": true
+        }
+      ]
+    },
+    "fis_latency": {
+      "status": "PASS",
+      "n_calls": 1000,
+      "mean_ms": 3.8514,
+      "median_ms": 3.7647,
+      "p95_ms": 6.181,
+      "p99_ms": 7.5555,
+      "min_ms": 0.0736,
+      "max_ms": 11.9138,
+      "total_fps_capacity": 259.6
+    },
+    "voice_logic": {
+      "status": "PASS",
+      "n_tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "details": [
+        {
+          "test": "phrase(phone, center, urg=0.9)",
+          "expected": "Phone found, directly ahead!",
+          "actual": "Phone found, directly ahead!",
+          "pass": true
+        },
+        {
+          "test": "phrase(wallet, left, urg=0.5)",
+          "expected": "Wallet detected, to your left.",
+          "actual": "Wallet detected, to your left.",
+          "pass": true
+        },
+        {
+          "test": "phrase(keys, right, urg=0.2)",
+          "expected": "Scanning... Keys spotted to your right.",
+          "actual": "Scanning... Keys spotted to your right.",
+          "pass": true
+        },
+        {
+          "test": "interval(freq=1.0)",
+          "expected_interval_s": 1.5,
+          "actual_interval_s": 1.5,
+          "pass": true
+        },
+        {
+          "test": "interval(freq=0.0)",
+          "expected_interval_s": 8.0,
+          "actual_interval_s": 8.0,
+          "pass": true
+        },
+        {
+          "test": "interval(freq=0.5)",
+          "expected_interval_s": 4.75,
+          "actual_interval_s": 4.75,
+          "pass": true
+        },
+        {
+          "test": "rate_limit_immediate",
+          "expected": false,
+          "actual": false,
+          "pass": true
+        },
+        {
+          "test": "rate_limit_after_10s",
+          "expected": true,
+          "actual": true,
+          "pass": true
+        },
+        {
+          "test": "direction_phrase(angle=-0.8)",
+          "expected": "far to your left",
+          "actual": "far to your left",
+          "pass": true
+        },
+        {
+          "test": "direction_phrase(angle=-0.4)",
+          "expected": "to your left",
+          "actual": "to your left",
+          "pass": true
+        },
+        {
+          "test": "direction_phrase(angle=-0.15)",
+          "expected": "slightly to your left",
+          "actual": "slightly to your left",
+          "pass": true
+        },
+        {
+          "test": "direction_phrase(angle=0.0)",
+          "expected": "directly ahead",
+          "actual": "directly ahead",
+          "pass": true
+        },
+        {
+          "test": "direction_phrase(angle=0.15)",
+          "expected": "slightly to your right",
+          "actual": "slightly to your right",
+          "pass": true
+        },
+        {
+          "test": "direction_phrase(angle=0.4)",
+          "expected": "to your right",
+          "actual": "to your right",
+          "pass": true
+        },
+        {
+          "test": "direction_phrase(angle=0.8)",
+          "expected": "far to your right",
+          "actual": "far to your right",
+          "pass": true
+        }
+      ]
+    },
+    "feature_extraction": {
+      "status": "PASS",
+      "checks": {
+        "center_angle_near_zero": {
+          "value": 0.0,
+          "pass": true
+        },
+        "stability_reaches_high": {
+          "value": 1.0,
+          "pass": true
+        },
+        "stability_drops_on_gap": {
+          "before": 1.0,
+          "after": 0.8,
+          "pass": true
+        }
+      },
+      "frame_log": [
+        {
+          "frame": 1,
+          "phase": "consistent",
+          "stability": 0.0,
+          "angle_offset": 0.0
+        },
+        {
+          "frame": 2,
+          "phase": "consistent",
+          "stability": 1.0,
+          "angle_offset": 0.0
+        },
+        {
+          "frame": 3,
+          "phase": "consistent",
+          "stability": 1.0,
+          "angle_offset": 0.0
+        },
+        {
+          "frame": 4,
+          "phase": "consistent",
+          "stability": 1.0,
+          "angle_offset": 0.0
+        },
+        {
+          "frame": 5,
+          "phase": "consistent",
+          "stability": 1.0,
+          "angle_offset": 0.0
+        },
+        {
+          "frame": 6,
+          "phase": "gap",
+          "stability": 0.8
+        },
+        {
+          "frame": 7,
+          "phase": "shifted",
+          "stability": 0.0,
+          "angle_offset": -0.7188
+        }
+      ]
+    },
+    "announcement_rate": {
+      "status": "PASS",
+      "simulation_seconds": 60,
+      "scenarios": [
+        {
+          "scenario": "high_conf_stable",
+          "fuzzy_frequency": 0.78,
+          "computed_interval_s": 2.93,
+          "announcements_in_60s": 21,
+          "rate_per_minute": 21
+        },
+        {
+          "scenario": "medium_conf",
+          "fuzzy_frequency": 0.22,
+          "computed_interval_s": 6.57,
+          "announcements_in_60s": 10,
+          "rate_per_minute": 10
+        },
+        {
+          "scenario": "low_conf_noise",
+          "fuzzy_frequency": 0.22,
+          "computed_interval_s": 6.57,
+          "announcements_in_60s": 10,
+          "rate_per_minute": 10
+        }
+      ]
+    },
+    "e2e_latency": {
+      "status": "PASS",
+      "n_frames": 50,
+      "detection": {
+        "mean_ms": 19.98,
+        "median_ms": 16.19,
+        "p95_ms": 30.97
+      },
+      "fis": {
+        "mean_ms": 3.57,
+        "median_ms": 3.42,
+        "p95_ms": 4.82
+      },
+      "end_to_end": {
+        "mean_ms": 23.64,
+        "median_ms": 19.64,
+        "p95_ms": 35.47,
+        "fps": 42.3
+      }
+    }
+  },
+  "overall_status": "PASS"
+}
