@@ -4,22 +4,29 @@ voice_output.py — Text-to-Speech Voice Guidance Module
 Converts fuzzy system outputs into short spoken phrases and manages
 announcement timing/rate-limiting so the user isn't overwhelmed.
 
-Uses pyttsx3 (fully offline TTS) as the primary engine.
+Speech is produced by pyttsx3 (fully offline TTS) running in a short-lived
+child process, one per utterance. The child does exactly what a standalone
+pyttsx3 test does (init -> say -> runAndWait on its own main thread), so it
+does not depend on the COM/audio state of the detection process (torch,
+OpenCV camera) and needs no worker thread or message pump in this process.
+If the child fails, the error is printed instead of being swallowed.
 """
 
 import os
 import sys
 import time
-import threading
-import queue
+import subprocess
+import importlib.util
 
-try:
-    import pyttsx3
-    HAS_PYTTSX3 = True
-except ImportError:
-    HAS_PYTTSX3 = False
+# Only checks that pyttsx3 is installed. It is NOT imported here on purpose:
+# the engine must only ever be created inside the child process.
+HAS_PYTTSX3 = importlib.util.find_spec("pyttsx3") is not None
+if not HAS_PYTTSX3:
     print("[WARNING] pyttsx3 not installed. Voice output will print to console only.")
     print("         Install with: pip install pyttsx3")
+
+_THIS_FILE = os.path.abspath(__file__)
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # Windows only, 0 elsewhere
 
 
 class VoiceOutput:
@@ -28,10 +35,13 @@ class VoiceOutput:
 
     Features:
     - Rate-limiting: respects fuzzy frequency output to avoid over-announcing
-    - Non-blocking: speaks in a background thread so detection loop isn't paused
+    - Non-blocking: each phrase is spoken by a child process, so the detection
+      loop is never paused
     - Phrase construction: builds natural-sounding guidance phrases
-    - Thread-safe: pyttsx3 engine is created and used entirely within a
-      dedicated worker thread to avoid cross-thread COM/driver issues.
+    - No overlap: while a phrase is still being spoken, new announcements are
+      skipped (without using up the rate-limit slot), so the next frame
+      speaks fresh information as soon as the speaker is free
+    - Loud failures: TTS problems are printed, never silently dropped
     """
 
     # Minimum seconds between announcements at different frequency levels
@@ -46,29 +56,30 @@ class VoiceOutput:
             volume (float): Volume level (0.0 to 1.0).
             voice_index (int): Index of the TTS voice to use (0 = default).
         """
+        self._rate = int(rate)
+        self._volume = float(volume)
+        self._voice_index = int(voice_index)
+
         self._last_announcement_time = 0.0
         self._last_phrase = ""
-        self._speaking = False
+        self._proc = None            # currently speaking child process, if any
+        self.last_exit_code = None   # exit code of the most recent finished utterance
+
         self._has_engine = False
-
-        # Queue-based architecture: main thread enqueues text,
-        # worker thread dequeues and speaks using its own pyttsx3 engine.
-        self._speech_queue = queue.Queue()
-        self._shutdown_event = threading.Event()
-        self._init_event = threading.Event()
-
         if HAS_PYTTSX3:
-            self._tts_thread = threading.Thread(
-                target=self._tts_worker,
-                args=(rate, volume, voice_index),
-                daemon=True,
-            )
-            self._tts_thread.start()
-            # Wait for the worker to finish initializing the engine
-            self._init_event.wait(timeout=5.0)
-        else:
-            self._tts_thread = None
+            self._has_engine = self._probe_engine()
+            if self._has_engine:
+                print(f"[VoiceOutput] TTS engine initialized "
+                      f"(rate={self._rate}, volume={self._volume})")
+        if not self._has_engine:
             print("[VoiceOutput] Running in console-only mode (no TTS engine).")
+
+    @property
+    def has_engine(self):
+        """True if spoken output is available (self-check passed)."""
+        return self._has_engine
+
+    # ── Public announce API (unchanged signatures) ────────────────────────
 
     def announce(self, class_name, direction, urgency, frequency):
         """
@@ -83,23 +94,77 @@ class VoiceOutput:
         Returns:
             str or None: The spoken phrase, or None if rate-limited.
         """
-        # Check rate limiting
         if not self._should_announce(frequency):
             return None
 
-        # Build the phrase
         phrase = self._build_phrase(class_name, direction, urgency)
+        return self._emit(phrase)
 
-        # Don't repeat the exact same phrase consecutively
-        if phrase == self._last_phrase and (time.time() - self._last_announcement_time) < 3.0:
+    def announce_with_angle(self, class_name, angle_offset, urgency, frequency):
+        """
+        Like announce(), but accepts raw angle_offset for a more precise direction phrase.
+
+        Args:
+            class_name (str): Detected object name.
+            angle_offset (float): Raw angle offset (-1 to +1).
+            urgency (float): Urgency from fuzzy system (0-1).
+            frequency (float): Frequency from fuzzy system (0-1).
+
+        Returns:
+            str or None: The spoken phrase, or None if rate-limited.
+        """
+        if not self._should_announce(frequency):
             return None
 
-        # Speak it
-        self._speak(phrase)
-        self._last_phrase = phrase
-        self._last_announcement_time = time.time()
+        # Use CWD-independent import so this works regardless of launch directory
+        if os.path.dirname(_THIS_FILE) not in sys.path:
+            sys.path.insert(0, os.path.dirname(_THIS_FILE))
+        from fuzzy_guidance import generate_direction_phrase
+        dir_phrase = generate_direction_phrase(angle_offset)
 
-        return phrase
+        phrase = self._compose_phrase(class_name, dir_phrase, urgency)
+        return self._emit(phrase)
+
+    def speak_raw(self, text):
+        """Speak arbitrary text immediately (no rate limiting, interrupts current speech)."""
+        self._speak(text, interrupt=True)
+
+    def announce_startup(self):
+        """Speak a startup message."""
+        self._speak("Belonging detector is ready. Point the camera to search.")
+
+    def announce_no_objects(self):
+        """Speak a 'nothing found' message (rate-limited)."""
+        if self._should_announce(0.1):  # very slow rate
+            if self._speak("No objects detected. Keep scanning."):
+                self._last_announcement_time = time.time()
+
+    def wait_until_idle(self, timeout=None):
+        """
+        Block until the current utterance (if any) has finished.
+
+        Returns:
+            bool: True if idle, False if the timeout expired first.
+        """
+        if self._proc is not None:
+            try:
+                self._proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                return False
+        self._reap()
+        return True
+
+    def shutdown(self):
+        """Let the current utterance finish (briefly), then clean up."""
+        if self._proc is not None:
+            try:
+                self._proc.wait(timeout=3.0)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
+            self._reap()
+
+    # ── Rate limiting and phrase construction (logic unchanged) ───────────
 
     def _should_announce(self, frequency):
         """
@@ -119,169 +184,172 @@ class VoiceOutput:
 
     def _build_phrase(self, class_name, direction, urgency):
         """
-        Construct a natural-sounding guidance phrase.
+        Construct a guidance phrase from a direction label.
 
         Examples:
             - "Phone found, directly ahead!"
             - "Handbag detected, to your left."
-            - "Backpack spotted, to your right."
-
-        Args:
-            class_name (str): Object name.
-            direction (str): 'left', 'center', or 'right'.
-            urgency (float): Controls phrase style (0-1).
-
-        Returns:
-            str: The guidance phrase.
+            - "Scanning... Backpack spotted to your right."
         """
-        obj = class_name.capitalize()
-
         dir_phrases = {
             'left': 'to your left',
             'center': 'directly ahead',
             'right': 'to your right',
         }
         dir_phrase = dir_phrases.get(direction, 'ahead')
+        return self._compose_phrase(class_name, dir_phrase, urgency)
 
-        # Construct phrase based on urgency level
-        if urgency > 0.7:
-            phrase = f"{obj} found, {dir_phrase}!"
-        elif urgency > 0.4:
-            phrase = f"{obj} detected, {dir_phrase}."
-        else:
-            phrase = f"Scanning... {obj} spotted {dir_phrase}."
-
-        return phrase
-
-    def announce_with_angle(self, class_name, angle_offset, urgency, frequency):
-        """
-        Like announce(), but accepts raw angle_offset for a more precise direction phrase.
-
-        Args:
-            class_name (str): Detected object name.
-            angle_offset (float): Raw angle offset (-1 to +1).
-            urgency (float): Urgency from fuzzy system (0-1).
-            frequency (float): Frequency from fuzzy system (0-1).
-
-        Returns:
-            str or None: The spoken phrase, or None if rate-limited.
-        """
-        if not self._should_announce(frequency):
-            return None
-
-        # Use CWD-independent import so this works regardless of launch directory
-        _src_dir = os.path.dirname(os.path.abspath(__file__))
-        if _src_dir not in sys.path:
-            sys.path.insert(0, _src_dir)
-        from fuzzy_guidance import generate_direction_phrase
-        dir_phrase = generate_direction_phrase(angle_offset)
-
+    @staticmethod
+    def _compose_phrase(class_name, dir_phrase, urgency):
+        """Build the phrase text; urgency controls the style."""
         obj = class_name.capitalize()
 
         if urgency > 0.7:
-            phrase = f"{obj} found, {dir_phrase}!"
+            return f"{obj} found, {dir_phrase}!"
         elif urgency > 0.4:
-            phrase = f"{obj} detected, {dir_phrase}."
-        else:
-            phrase = f"Scanning... {obj} spotted {dir_phrase}."
+            return f"{obj} detected, {dir_phrase}."
+        return f"Scanning... {obj} spotted {dir_phrase}."
 
+    def _emit(self, phrase):
+        """
+        Repeat-suppression + speak + bookkeeping shared by announce*().
+
+        Returns:
+            str or None: The phrase if it was spoken, else None.
+        """
+        # Don't repeat the exact same phrase consecutively
         if phrase == self._last_phrase and (time.time() - self._last_announcement_time) < 3.0:
             return None
 
-        self._speak(phrase)
+        # Still speaking the previous phrase -> skip; do NOT consume the
+        # rate-limit slot, so the next call speaks as soon as we're free.
+        if not self._speak(phrase):
+            return None
+
         self._last_phrase = phrase
         self._last_announcement_time = time.time()
-
         return phrase
 
-    def speak_raw(self, text):
-        """Speak arbitrary text immediately (no rate limiting)."""
-        self._speak(text)
+    # ── Speech backend (child process) ────────────────────────────────────
 
-    def _speak(self, text):
+    def _speak(self, text, interrupt=False):
         """
-        Speak text using TTS engine (non-blocking).
-        Falls back to console print if engine is unavailable.
+        Speak text without blocking. Always prints to console.
+
+        Returns:
+            bool: True if the phrase was delivered, False if skipped because
+                  the previous phrase is still being spoken.
         """
+        if self._is_busy():
+            if not interrupt:
+                return False
+            self._proc.kill()
+            self._proc.wait()
+            self._reap()
+
         print(f"[VOICE] {text}")
 
         if self._has_engine:
-            # Drain any stale pending phrase from the queue so only the latest request remains pending
-            while not self._speech_queue.empty():
-                try:
-                    self._speech_queue.get_nowait()
-                except queue.Empty:
-                    break
-            self._speech_queue.put(text)
+            self._start_child(text)
+        return True
 
-    def _tts_worker(self, rate, volume, voice_index):
-        """
-        Dedicated worker thread that owns the pyttsx3 engine.
-        pyttsx3 is not thread-safe — the engine must be created and used
-        entirely within a single thread.
-        """
-        import pythoncom
-        pythoncom.CoInitialize()  # Windows COM initialization for secondary threads
+    def _is_busy(self):
+        """True while a child process is still speaking."""
+        self._reap()
+        return self._proc is not None
+
+    def _start_child(self, text):
+        cmd = [sys.executable, _THIS_FILE, "--speak", text,
+               str(self._rate), str(self._volume), str(self._voice_index)]
         try:
-            engine = pyttsx3.init()
-            engine.setProperty('rate', rate)
-            engine.setProperty('volume', volume)
-            voices = engine.getProperty('voices')
-            if voices and voice_index < len(voices):
-                engine.setProperty('voice', voices[voice_index].id)
-            self._has_engine = True
-            print(f"[VoiceOutput] TTS engine initialized (rate={rate}, volume={volume})")
-        except Exception as e:
-            print(f"[VoiceOutput] Failed to initialize TTS engine: {e}")
-            self._has_engine = False
-        finally:
-            self._init_event.set()
+            self._proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                creationflags=_NO_WINDOW,
+            )
+        except OSError as e:
+            self._proc = None
+            print(f"[VoiceOutput] Could not start TTS process: {e}")
 
-        # If engine failed to initialize, exit thread
-        if not self._has_engine:
+    def _reap(self):
+        """Collect a finished child and report a failure loudly."""
+        if self._proc is None:
+            return
+        code = self._proc.poll()
+        if code is None:
             return
 
-        while not self._shutdown_event.is_set():
-            try:
-                text = self._speech_queue.get(timeout=0.5)
-            except queue.Empty:
-                continue
+        err = ""
+        if self._proc.stderr is not None:
+            err = self._proc.stderr.read()
+            self._proc.stderr.close()
+        self.last_exit_code = code
+        self._proc = None
+        if code != 0:
+            print(f"[VoiceOutput] TTS process failed (exit {code}): {err.strip()[-400:]}")
 
-            self._speaking = True
-            try:
-                engine.say(text)
-                engine.runAndWait()
-            except Exception as e:
-                print(f"[VoiceOutput] TTS error: {e}")
-            finally:
-                self._speaking = False
-
-        # Clean shutdown of the engine
+    def _probe_engine(self):
+        """Run the child once in --check mode so a broken TTS is reported at startup."""
         try:
-            engine.stop()
-        except Exception:
-            pass
+            result = subprocess.run(
+                [sys.executable, _THIS_FILE, "--check"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                timeout=30,
+                creationflags=_NO_WINDOW,
+            )
+        except (OSError, subprocess.TimeoutExpired) as e:
+            print(f"[VoiceOutput] TTS self-check could not run: {e}")
+            return False
 
-    def announce_startup(self):
-        """Speak a startup message."""
-        self._speak("Belonging detector is ready. Point the camera to search.")
+        if result.returncode != 0:
+            print(f"[VoiceOutput] TTS self-check failed (exit {result.returncode}): "
+                  f"{result.stderr.strip()[-400:]}")
+            return False
+        return True
 
-    def announce_no_objects(self):
-        """Speak a 'nothing found' message (rate-limited)."""
-        if self._should_announce(0.1):  # very slow rate
-            self._speak("No objects detected. Keep scanning.")
-            self._last_announcement_time = time.time()
 
-    def shutdown(self):
-        """Clean up the TTS engine and worker thread."""
-        self._shutdown_event.set()
-        if self._tts_thread is not None:
-            self._tts_thread.join(timeout=3.0)
+# ─── Child-process entry point ────────────────────────────────────────────────
+
+def _child_main(argv):
+    """
+    Runs in the child process:
+        python voice_output.py --check
+        python voice_output.py --speak <text> <rate> <volume> <voice_index>
+
+    This is the plain main-thread pyttsx3 sequence. Any exception propagates,
+    producing a traceback on stderr and a non-zero exit code for the parent.
+    """
+    import pyttsx3
+
+    engine = pyttsx3.init()
+    if argv[0] == "--check":
+        engine.getProperty('voices')
+        return 0
+
+    text, rate, volume, voice_index = argv[1], int(argv[2]), float(argv[3]), int(argv[4])
+    engine.setProperty('rate', rate)
+    engine.setProperty('volume', volume)
+    voices = engine.getProperty('voices')
+    if voices and 0 <= voice_index < len(voices):
+        engine.setProperty('voice', voices[voice_index].id)
+    engine.say(text)
+    engine.runAndWait()
+    return 0
 
 
 # ─── Main (test) ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] in ("--speak", "--check"):
+        sys.exit(_child_main(sys.argv[1:]))
+
     print("=== Voice Output — Test ===\n")
 
     voice = VoiceOutput(rate=160, volume=0.8)
@@ -295,6 +363,7 @@ if __name__ == "__main__":
     ]
 
     voice.announce_startup()
+    voice.wait_until_idle(30)
     time.sleep(2)
 
     for cls, direction, urg, freq in test_cases:
@@ -303,6 +372,7 @@ if __name__ == "__main__":
             print(f"  -> Announced: {phrase}")
         else:
             print(f"  -> Rate-limited (skipped)")
+        voice.wait_until_idle(30)
         time.sleep(2)
 
     voice.shutdown()

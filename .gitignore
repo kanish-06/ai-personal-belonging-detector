@@ -34,3 +34,6 @@ models/detector/*.pt
 .idea/
 .DS_Store
 Thumbs.db
+
+# test pipeline scripts
+src/test_voice_pipeline_path.py

@@ -50,28 +50,39 @@ User (spoken feedback)
 
 ```
 belonging-detector/
-  dataset/
-    classes.txt              # Class names (one per line)
-    data.yaml                # YOLOv8 dataset configuration
-    images/train/, images/val/
-    labels/train/, labels/val/
-    remap_dataset.py         # Script to normalize class names/IDs
-  models/
-    detector/                # Trained YOLOv8 weights (best.pt)
-  src/
-    detect.py                # YOLOv8 detection wrapper
-    feature_extraction.py    # Raw detection -> fuzzy features (angle, confidence, stability)
-    fuzzy_guidance.py        # Mamdani FIS for guidance decisions
-    voice_output.py          # Text-to-speech output
-    pipeline.py              # End-to-end real-time pipeline
-  training/
-    train_yolov8.py          # Transfer learning training script
-  evaluation/
-    evaluate_detector.py     # mAP, precision, recall evaluation
-    evaluate_usability.py    # Time-to-locate, latency benchmarks
-  requirements.txt
-  README.md
-  .gitignore
+│
+├── dataset/
+│   ├── classes.txt
+│   ├── data.yaml
+│   ├── remap_dataset.py
+│   ├── images/
+│   │   ├── train/
+│   │   └── val/
+│   └── labels/
+│       ├── train/
+│       └── val/
+│
+├── models/
+│   └── detector/
+│       └── best.pt
+│
+├── src/
+│   ├── detect.py
+│   ├── feature_extraction.py
+│   ├── fuzzy_guidance.py
+│   ├── voice_output.py
+│   └── pipeline.py
+│
+├── training/
+│   └── train_yolov8.py
+│
+├── evaluation/
+│   ├── evaluate_detector.py
+│   └── evaluate_usability.py
+│
+├── requirements.txt
+├── README.md
+└── .gitignore
 ```
 
 ## Setup and Installation
@@ -108,7 +119,6 @@ Because public datasets have inconsistent naming (e.g., `Car-key` vs `keys`, `mo
 We use transfer learning to fine-tune `yolov8n.pt` for our 5 classes. 
 
 ```bash
-# Requires GPU for fast training
 python training/train_yolov8.py --data dataset/data.yaml --epochs 100 --batch 8 --imgsz 640
 ```
 The best weights are saved to `models/detector/best.pt`.
@@ -137,11 +147,17 @@ The Mamdani Fuzzy Inference System converts numerical inputs into semantic voice
 # Full GUI mode for debugging/testing:
 python src/pipeline.py
 
+# also you can specify the threshold confidence 
+# eg:for 35% confidence level:
+python src/pipeline.py --confidence 0.35
+
 # Search for a specific object only:
 python src/pipeline.py --target phone
 
 # Headless mode (e.g., Raspberry Pi deployment):
 python src/pipeline.py --no-gui
+
+
 ```
 
 ## Evaluation Methods
@@ -165,7 +181,6 @@ python evaluation/evaluate_usability.py --benchmark
 
 ### Current YOLO Results and Dataset Statistics
 - **Model:** YOLOv8-nano
-- **Hardware:** NVIDIA RTX 4050 Laptop GPU (6GB VRAM)
 - **Validation Result:** `mAP50 = 0.6406`
 
 ## Troubleshooting and Limitations
@@ -173,4 +188,3 @@ python evaluation/evaluate_usability.py --benchmark
 - **CUDA/PyTorch Issues:** If the detector falls back to CPU, ensure you installed the PyTorch version compiled for your specific CUDA toolkit. Check with `python -c "import torch; print(torch.cuda.is_available())"`.
 - **Out of Memory (OOM) during Training:** If YOLOv8 training crashes, reduce the batch size in `train_yolov8.py` (e.g., from `--batch 8` to `--batch 4`).
 - **Glasses Detection:** The `glasses` class may underperform due to reflections and thin frames. Consider augmenting the dataset with more glasses images if precision/recall is noticeably lower.
-- **Hardware Limitations:** The system requires a GPU for training, but inference can run on CPU or edge devices (e.g., Raspberry Pi) using TFLite/ONNX exports.
