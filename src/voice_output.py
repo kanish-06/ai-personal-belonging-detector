@@ -100,7 +100,7 @@ class VoiceOutput:
         phrase = self._build_phrase(class_name, direction, urgency)
         return self._emit(phrase)
 
-    def announce_with_angle(self, class_name, angle_offset, urgency, frequency):
+    def announce_with_angle(self, class_name, angle_offset, urgency, frequency, distance=None):
         """
         Like announce(), but accepts raw angle_offset for a more precise direction phrase.
 
@@ -109,6 +109,7 @@ class VoiceOutput:
             angle_offset (float): Raw angle offset (-1 to +1).
             urgency (float): Urgency from fuzzy system (0-1).
             frequency (float): Frequency from fuzzy system (0-1).
+            distance (float, optional): Estimated distance in meters.
 
         Returns:
             str or None: The spoken phrase, or None if rate-limited.
@@ -122,7 +123,7 @@ class VoiceOutput:
         from fuzzy_guidance import generate_direction_phrase
         dir_phrase = generate_direction_phrase(angle_offset)
 
-        phrase = self._compose_phrase(class_name, dir_phrase, urgency)
+        phrase = self._compose_phrase(class_name, dir_phrase, urgency, distance)
         return self._emit(phrase)
 
     def speak_raw(self, text):
@@ -182,7 +183,7 @@ class VoiceOutput:
         elapsed = time.time() - self._last_announcement_time
         return elapsed >= interval
 
-    def _build_phrase(self, class_name, direction, urgency):
+    def _build_phrase(self, class_name, direction, urgency, distance=None):
         """
         Construct a guidance phrase from a direction label.
 
@@ -197,18 +198,20 @@ class VoiceOutput:
             'right': 'to your right',
         }
         dir_phrase = dir_phrases.get(direction, 'ahead')
-        return self._compose_phrase(class_name, dir_phrase, urgency)
+        return self._compose_phrase(class_name, dir_phrase, urgency, distance)
 
     @staticmethod
-    def _compose_phrase(class_name, dir_phrase, urgency):
+    def _compose_phrase(class_name, dir_phrase, urgency, distance=None):
         """Build the phrase text; urgency controls the style."""
         obj = class_name.capitalize()
 
+        dist_str = f" at {distance:.1f} meters" if distance is not None and distance > 0 else ""
+
         if urgency > 0.7:
-            return f"{obj} found, {dir_phrase}!"
+            return f"{obj} found{dist_str}, {dir_phrase}!"
         elif urgency > 0.4:
-            return f"{obj} detected, {dir_phrase}."
-        return f"Scanning... {obj} spotted {dir_phrase}."
+            return f"{obj} detected{dist_str}, {dir_phrase}."
+        return f"Scanning... {obj} spotted {dir_phrase}{dist_str}."
 
     def _emit(self, phrase):
         """

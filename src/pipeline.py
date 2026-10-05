@@ -27,6 +27,7 @@ from detect import ObjectDetector, CLASS_NAMES
 from feature_extraction import FeatureExtractor
 from fuzzy_guidance import FuzzyGuidanceSystem, generate_direction_phrase
 from voice_output import VoiceOutput
+from depth_estimation import DepthEstimator
 
 
 class BelongingDetectorPipeline:
@@ -81,6 +82,9 @@ class BelongingDetectorPipeline:
 
         print("[4/4] Initializing voice output...")
         self.voice = VoiceOutput(rate=160, volume=0.9)
+
+        print("[5/5] Initializing depth estimator...")
+        self.depth_estimator = DepthEstimator()
 
         self._running = False
         self._frame_count = 0
@@ -143,6 +147,8 @@ class BelongingDetectorPipeline:
                 self._frame_count += 1
                 self._fps_frame_count += 1
 
+                frame_start_time = time.time()
+
                 # ── Step 1: Object Detection ───────────────────────────────
                 detections = self.detector.detect(frame, self.confidence_threshold)
 
@@ -150,10 +156,24 @@ class BelongingDetectorPipeline:
                 if self.target_class:
                     detections = [d for d in detections if d.class_name == self.target_class]
 
-                # ── Step 2: Feature Extraction ─────────────────────────────
+                # ── Step 2: Depth + Feature Extraction ─────────────────────────────
                 features_list = []
+                depth_latency = 0.0
+                depth_map = None
+
+                if detections:
+                    depth_start = time.time()
+                    depth_map = self.depth_estimator.estimate_depth(frame)
+                    depth_latency = time.time() - depth_start
+
                 for det in detections:
                     features = self.feature_extractor.extract(det, frame_width, frame_height)
+                    
+                    distance = -1.0
+                    if depth_map is not None:
+                        distance = self.depth_estimator.extract_depth_for_box(depth_map, det.bbox_xyxy)
+                    features['distance'] = distance
+
                     features_list.append(features)
 
                 # Update tracking history
@@ -184,7 +204,10 @@ class BelongingDetectorPipeline:
                             angle_offset=best_features['angle_offset'],
                             urgency=guidance['urgency'],
                             frequency=guidance['frequency'],
+                            distance=best_features['distance'],
                         )
+
+                end_to_end_latency = time.time() - frame_start_time
 
                 # ── GUI Display ────────────────────────────────────────────
                 if self.show_gui and display_frame is not None:
@@ -203,6 +226,15 @@ class BelongingDetectorPipeline:
                         display_frame, f"FPS: {self._fps:.1f}",
                         (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2,
                     )
+                    cv2.putText(
+                        display_frame, f"End-to-End Latency: {end_to_end_latency*1000:.1f}ms",
+                        (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2,
+                    )
+                    if depth_map is not None:
+                        cv2.putText(
+                            display_frame, f"Depth Latency: {depth_latency*1000:.1f}ms",
+                            (10, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2,
+                        )
 
                     cv2.imshow("Belonging Detector", display_frame)
 
@@ -245,8 +277,10 @@ class BelongingDetectorPipeline:
             # Bounding box
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
-            # Label with class, confidence, and angle
-            label = f"{det.class_name} {det.confidence:.2f} | angle:{feat['angle_offset']:.2f}"
+            dist_str = f" {feat['distance']:.1f}m" if feat.get('distance', -1.0) > 0 else ""
+
+            # Label with class, confidence, distance, and angle
+            label = f"{det.class_name} {det.confidence:.2f}{dist_str} | angle:{feat['angle_offset']:.2f}"
             (lw, lh), baseline = cv2.getTextSize(
                 label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
             )

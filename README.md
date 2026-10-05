@@ -12,26 +12,29 @@ This project combines a deep learning object detector for perception with a Mamd
 
 The system is split into two connected components:
 
-1. **Neural Component (Perception)** — A CNN-based object detector (YOLOv8-nano) that finds target objects in a camera frame and outputs bounding boxes and confidence scores.
-2. **Fuzzy Component (Decision & Guidance)** — A Mamdani Fuzzy Inference System (FIS) that takes the object's horizontal position, detector confidence, and temporal stability, converting them into smooth, human-friendly voice guidance (direction, urgency, announcement frequency).
+1. **Neural Component (Perception & Depth)** — A CNN-based object detector (YOLOv8-nano) that finds target objects, paired with Depth Anything V2 (Metric Indoor Small) which computes a metric depth map of the environment to estimate the object's distance.
+2. **Fuzzy Component (Decision & Guidance)** — A Mamdani Fuzzy Inference System (FIS) that takes the object's horizontal position, detector confidence, and temporal stability, converting them into smooth, human-friendly voice guidance (direction, urgency, announcement frequency). Distance is then woven into the spoken phrase.
 
 ### End-to-End Workflow
-```
+```text
 Camera
   |
   v
 Object Detector (CNN: YOLOv8-nano, fine-tuned on 5 classes)
   |  outputs: class label, bounding box (x, y, w, h), confidence score
   v
+Depth Estimation (Depth Anything V2 Metric Indoor Small)
+  |  outputs: metric distance (meters) extracted from the bounding box
+  v
 Feature Extractor
-  |  derives: angle_offset (horizontal position), confidence, temporal_stability
+  |  derives: angle_offset (horizontal position), distance, confidence, temporal_stability
   v
 Fuzzy Inference System (Mamdani FIS)
   |  inputs: angle, confidence, stability
   |  outputs: guidance urgency, announcement frequency, direction
   v
 Text-to-Speech / Voice Guidance
-  |  speaks short phrases: e.g. "Phone found, directly ahead!"
+  |  speaks short phrases: e.g. "Phone found at 1.1 meters, directly ahead!"
   v
 User (spoken feedback)
 ```
@@ -68,6 +71,7 @@ belonging-detector/
 │
 ├── src/
 │   ├── detect.py
+│   ├── depth_estimation.py
 │   ├── feature_extraction.py
 │   ├── fuzzy_guidance.py
 │   ├── voice_output.py
@@ -79,6 +83,13 @@ belonging-detector/
 ├── evaluation/
 │   ├── evaluate_detector.py
 │   └── evaluate_usability.py
+│
+├── tests/
+│   ├── test_depth.py
+│   ├── test_pipeline_image.py
+│   ├── verify_cuda.py
+│   ├── verify_dataset.py
+│   └── test_voice_pipeline_path.py
 │
 ├── requirements.txt
 ├── README.md
@@ -99,7 +110,7 @@ source venv/bin/activate
 
 ### 2. Install Dependencies
 
-The project requires PyTorch and OpenCV.
+The project requires PyTorch, OpenCV, Ultralytics (YOLO), and Hugging Face Transformers.
 
 ```bash
 pip install -r requirements.txt
@@ -135,9 +146,10 @@ The Mamdani Fuzzy Inference System converts numerical inputs into semantic voice
 **Outputs:**
 - **Guidance Urgency:** Low, Medium, High
 - **Announcement Frequency:** Slow, Fast
+- *(Note: Distance is currently appended to the voice phrase directly outside the fuzzy system)*
 
 **Example Rules:**
-- IF confidence is High AND angle is Center AND stability is Stable THEN urgency is High, frequency is Fast. -> "Phone found, directly ahead!"
+- IF confidence is High AND angle is Center AND stability is Stable THEN urgency is High, frequency is Fast. -> "Phone found at 1.1 meters, directly ahead!"
 - IF confidence is Medium AND stability is Stable THEN urgency is Medium, frequency is Slow.
 - IF stability is Unstable THEN urgency is Low (suppress announcements).
 
@@ -172,16 +184,20 @@ python evaluation/evaluate_usability.py --benchmark
 
 ## Current Project Status
 
-- [x] **Environment Setup:** COMPLETED (PyTorch & OpenCV operational)
-- [x] **Dataset Pipeline:** COMPLETED (Mappings normalized via `remap_dataset.py`)
+- [x] **Environment Setup:** COMPLETED
+- [x] **Dataset Pipeline:** COMPLETED
 - [x] **YOLOv8 Training:** COMPLETED 
 - [x] **Evaluation Script Fixes:** COMPLETED
 - [x] **Fuzzy System Implementation:** COMPLETED
+- [x] **Depth Estimation Integration:** COMPLETED (Depth Anything V2 Metric Indoor Small)
 - [x] **End-to-End Pipeline Integration:** COMPLETED
+- [ ] **Performance Optimization:** PENDING (Improve end-to-end latency)
 
-### Current YOLO Results and Dataset Statistics
+### Current Results and Benchmarks
 - **Model:** YOLOv8-nano
 - **Validation Result:** `mAP50 = 0.6406`
+- **Depth Inference Latency:** ~350ms (on initial GPU pass)
+- **End-to-End Latency:** ~1350ms (includes pipeline and model overhead)
 
 ## Troubleshooting and Limitations
 

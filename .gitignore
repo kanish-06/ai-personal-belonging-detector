@@ -35,5 +35,5 @@ models/detector/*.pt
 .DS_Store
 Thumbs.db
 
-# test pipeline scripts
-src/test_voice_pipeline_path.py
+# Build Specification
+PROJECT_BUILD_SPEC.md
