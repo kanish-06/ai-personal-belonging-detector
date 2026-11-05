@@ -1,0 +1,517 @@
+{
+  "timestamp": "2026-11-03T14:23:45.415900",
+  "yolo_model": "C:\\sem-5\\NFT\\belonging-detector\\models\\detector\\best.pt",
+  "qwen_model": "qwen3-vl:2b",
+  "test_directory": "C:\\sem-5\\NFT\\belonging-detector\\test-data",
+  "total_images": 16,
+  "warmup": {
+    "yolo_warmup_s": 7.637,
+    "qwen_warmup_s": 1.852
+  },
+  "latency_analysis": {
+    "yolo_avg_ms": 41.95,
+    "yolo_p50_ms": 22.4,
+    "yolo_p95_ms": 113.82,
+    "qwen_avg_s": 1.466,
+    "qwen_avg_ms": 1466.0,
+    "qwen_p50_s": 1.16,
+    "qwen_p95_s": 2.788,
+    "note": "Averages exclude initial model loading / warm-up latency."
+  },
+  "overall_accuracy": {
+    "yolo_correct": 12,
+    "yolo_accuracy": 0.75,
+    "qwen_correct": 16,
+    "qwen_accuracy": 1.0
+  },
+  "per_class_summary": {
+    "glasses": {
+      "total_images": 2,
+      "yolo_correct": 2,
+      "yolo_accuracy": 1.0,
+      "yolo_avg_confidence": 0.8376,
+      "qwen_correct": 2,
+      "qwen_accuracy": 1.0,
+      "yolo_predictions": [
+        "glasses",
+        "glasses"
+      ],
+      "qwen_predictions": [
+        "glasses",
+        "glasses"
+      ]
+    },
+    "keys": {
+      "total_images": 4,
+      "yolo_correct": 2,
+      "yolo_accuracy": 0.5,
+      "yolo_avg_confidence": 0.7607,
+      "qwen_correct": 4,
+      "qwen_accuracy": 1.0,
+      "yolo_predictions": [
+        "keys",
+        "none",
+        "keys",
+        "phone"
+      ],
+      "qwen_predictions": [
+        "keys",
+        "keys",
+        "keys",
+        "keys"
+      ]
+    },
+    "phone": {
+      "total_images": 2,
+      "yolo_correct": 1,
+      "yolo_accuracy": 0.5,
+      "yolo_avg_confidence": 0.3744,
+      "qwen_correct": 2,
+      "qwen_accuracy": 1.0,
+      "yolo_predictions": [
+        "none",
+        "phone"
+      ],
+      "qwen_predictions": [
+        "phone",
+        "phone"
+      ]
+    },
+    "unknown": {
+      "total_images": 1,
+      "yolo_correct": 1,
+      "yolo_accuracy": 1.0,
+      "yolo_avg_confidence": 0.0,
+      "qwen_correct": 1,
+      "qwen_accuracy": 1.0,
+      "yolo_predictions": [
+        "none"
+      ],
+      "qwen_predictions": [
+        "unknown"
+      ]
+    },
+    "wallet": {
+      "total_images": 3,
+      "yolo_correct": 3,
+      "yolo_accuracy": 1.0,
+      "yolo_avg_confidence": 0.6954,
+      "qwen_correct": 3,
+      "qwen_accuracy": 1.0,
+      "yolo_predictions": [
+        "wallet",
+        "wallet",
+        "wallet"
+      ],
+      "qwen_predictions": [
+        "wallet",
+        "wallet",
+        "wallet"
+      ]
+    },
+    "watch": {
+      "total_images": 4,
+      "yolo_correct": 3,
+      "yolo_accuracy": 0.75,
+      "yolo_avg_confidence": 0.44,
+      "qwen_correct": 4,
+      "qwen_accuracy": 1.0,
+      "yolo_predictions": [
+        "none",
+        "watch",
+        "watch",
+        "watch"
+      ],
+      "qwen_predictions": [
+        "watch",
+        "watch",
+        "watch",
+        "watch"
+      ]
+    }
+  },
+  "special_focus_keys_and_watch": {
+    "keys": {
+      "total_images": 4,
+      "yolo_correct": 2,
+      "yolo_accuracy": 0.5,
+      "yolo_avg_confidence": 0.7607,
+      "qwen_correct": 4,
+      "qwen_accuracy": 1.0,
+      "yolo_predictions": [
+        "keys",
+        "none",
+        "keys",
+        "phone"
+      ],
+      "qwen_predictions": [
+        "keys",
+        "keys",
+        "keys",
+        "keys"
+      ]
+    },
+    "watch": {
+      "total_images": 4,
+      "yolo_correct": 3,
+      "yolo_accuracy": 0.75,
+      "yolo_avg_confidence": 0.44,
+      "qwen_correct": 4,
+      "qwen_accuracy": 1.0,
+      "yolo_predictions": [
+        "none",
+        "watch",
+        "watch",
+        "watch"
+      ],
+      "qwen_predictions": [
+        "watch",
+        "watch",
+        "watch",
+        "watch"
+      ]
+    }
+  },
+  "image_results": [
+    {
+      "image": "glasses.jpeg",
+      "actual_class": "glasses",
+      "yolo_prediction": "glasses",
+      "yolo_confidence": 0.8742,
+      "yolo_latency_ms": 31.93,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 1,
+      "yolo_all_detections": [
+        {
+          "class": "glasses",
+          "confidence": 0.8742
+        }
+      ],
+      "qwen_prediction": "glasses",
+      "qwen_raw_response": "glasses",
+      "qwen_inference_time_s": 0.798,
+      "qwen_latency_ms": 798.4,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "glasses2.jpeg",
+      "actual_class": "glasses",
+      "yolo_prediction": "glasses",
+      "yolo_confidence": 0.801,
+      "yolo_latency_ms": 60.55,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 1,
+      "yolo_all_detections": [
+        {
+          "class": "glasses",
+          "confidence": 0.801
+        }
+      ],
+      "qwen_prediction": "glasses",
+      "qwen_raw_response": "glasses",
+      "qwen_inference_time_s": 1.027,
+      "qwen_latency_ms": 1026.8,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "k_wallet.jpeg",
+      "actual_class": "wallet",
+      "yolo_prediction": "wallet",
+      "yolo_confidence": 0.8955,
+      "yolo_latency_ms": 181.56,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 1,
+      "yolo_all_detections": [
+        {
+          "class": "wallet",
+          "confidence": 0.8955
+        }
+      ],
+      "qwen_prediction": "wallet",
+      "qwen_raw_response": "wallet",
+      "qwen_inference_time_s": 1.417,
+      "qwen_latency_ms": 1416.7,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "keys1.jpg",
+      "actual_class": "keys",
+      "yolo_prediction": "keys",
+      "yolo_confidence": 0.8909,
+      "yolo_latency_ms": 19.78,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 7,
+      "yolo_all_detections": [
+        {
+          "class": "keys",
+          "confidence": 0.8909
+        },
+        {
+          "class": "keys",
+          "confidence": 0.6774
+        },
+        {
+          "class": "keys",
+          "confidence": 0.5742
+        },
+        {
+          "class": "keys",
+          "confidence": 0.4578
+        },
+        {
+          "class": "watch",
+          "confidence": 0.3886
+        },
+        {
+          "class": "phone",
+          "confidence": 0.3651
+        },
+        {
+          "class": "keys",
+          "confidence": 0.285
+        }
+      ],
+      "qwen_prediction": "keys",
+      "qwen_raw_response": "keys",
+      "qwen_inference_time_s": 1.806,
+      "qwen_latency_ms": 1806.0,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "keys2.jpg",
+      "actual_class": "keys",
+      "yolo_prediction": "none",
+      "yolo_confidence": 0.0,
+      "yolo_latency_ms": 20.08,
+      "yolo_is_correct": false,
+      "yolo_detections_count": 0,
+      "yolo_all_detections": [],
+      "qwen_prediction": "keys",
+      "qwen_raw_response": "keys",
+      "qwen_inference_time_s": 0.965,
+      "qwen_latency_ms": 965.2,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "keys3.jpg",
+      "actual_class": "keys",
+      "yolo_prediction": "keys",
+      "yolo_confidence": 0.8503,
+      "yolo_latency_ms": 20.95,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 3,
+      "yolo_all_detections": [
+        {
+          "class": "keys",
+          "confidence": 0.8503
+        },
+        {
+          "class": "keys",
+          "confidence": 0.4483
+        },
+        {
+          "class": "keys",
+          "confidence": 0.251
+        }
+      ],
+      "qwen_prediction": "keys",
+      "qwen_raw_response": "keys",
+      "qwen_inference_time_s": 1.174,
+      "qwen_latency_ms": 1174.4,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "keys4.jpg",
+      "actual_class": "keys",
+      "yolo_prediction": "phone",
+      "yolo_confidence": 0.5409,
+      "yolo_latency_ms": 11.15,
+      "yolo_is_correct": false,
+      "yolo_detections_count": 2,
+      "yolo_all_detections": [
+        {
+          "class": "phone",
+          "confidence": 0.5409
+        },
+        {
+          "class": "keys",
+          "confidence": 0.3275
+        }
+      ],
+      "qwen_prediction": "keys",
+      "qwen_raw_response": "keys",
+      "qwen_inference_time_s": 1.337,
+      "qwen_latency_ms": 1336.9,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "phone1.jpg",
+      "actual_class": "phone",
+      "yolo_prediction": "none",
+      "yolo_confidence": 0.0,
+      "yolo_latency_ms": 18.04,
+      "yolo_is_correct": false,
+      "yolo_detections_count": 0,
+      "yolo_all_detections": [],
+      "qwen_prediction": "phone",
+      "qwen_raw_response": "phone",
+      "qwen_inference_time_s": 1.145,
+      "qwen_latency_ms": 1145.1,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "phone2.jpg",
+      "actual_class": "phone",
+      "yolo_prediction": "phone",
+      "yolo_confidence": 0.3744,
+      "yolo_latency_ms": 16.36,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 1,
+      "yolo_all_detections": [
+        {
+          "class": "phone",
+          "confidence": 0.3744
+        }
+      ],
+      "qwen_prediction": "phone",
+      "qwen_raw_response": "phone",
+      "qwen_inference_time_s": 1.053,
+      "qwen_latency_ms": 1052.9,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "test_image.jpg",
+      "actual_class": "unknown",
+      "yolo_prediction": "none",
+      "yolo_confidence": 0.0,
+      "yolo_latency_ms": 53.72,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 0,
+      "yolo_all_detections": [],
+      "qwen_prediction": "unknown",
+      "qwen_raw_response": "unknown",
+      "qwen_inference_time_s": 5.736,
+      "qwen_latency_ms": 5735.6,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "wallet.jpg",
+      "actual_class": "wallet",
+      "yolo_prediction": "wallet",
+      "yolo_confidence": 0.9183,
+      "yolo_latency_ms": 91.25,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 1,
+      "yolo_all_detections": [
+        {
+          "class": "wallet",
+          "confidence": 0.9183
+        }
+      ],
+      "qwen_prediction": "wallet",
+      "qwen_raw_response": "wallet",
+      "qwen_inference_time_s": 1.189,
+      "qwen_latency_ms": 1189.2,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "wallet2.jpeg",
+      "actual_class": "wallet",
+      "yolo_prediction": "wallet",
+      "yolo_confidence": 0.2724,
+      "yolo_latency_ms": 51.91,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 1,
+      "yolo_all_detections": [
+        {
+          "class": "wallet",
+          "confidence": 0.2724
+        }
+      ],
+      "qwen_prediction": "wallet",
+      "qwen_raw_response": "wallet",
+      "qwen_inference_time_s": 1.382,
+      "qwen_latency_ms": 1381.7,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "watch1.jpg",
+      "actual_class": "watch",
+      "yolo_prediction": "none",
+      "yolo_confidence": 0.0,
+      "yolo_latency_ms": 23.84,
+      "yolo_is_correct": false,
+      "yolo_detections_count": 0,
+      "yolo_all_detections": [],
+      "qwen_prediction": "watch",
+      "qwen_raw_response": "watch",
+      "qwen_inference_time_s": 0.983,
+      "qwen_latency_ms": 983.0,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "watch2.jpg",
+      "actual_class": "watch",
+      "yolo_prediction": "watch",
+      "yolo_confidence": 0.4525,
+      "yolo_latency_ms": 34.91,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 1,
+      "yolo_all_detections": [
+        {
+          "class": "watch",
+          "confidence": 0.4525
+        }
+      ],
+      "qwen_prediction": "watch",
+      "qwen_raw_response": "watch",
+      "qwen_inference_time_s": 1.134,
+      "qwen_latency_ms": 1133.5,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "watch3.jpg",
+      "actual_class": "watch",
+      "yolo_prediction": "watch",
+      "yolo_confidence": 0.2681,
+      "yolo_latency_ms": 18.01,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 2,
+      "yolo_all_detections": [
+        {
+          "class": "watch",
+          "confidence": 0.2681
+        },
+        {
+          "class": "watch",
+          "confidence": 0.2587
+        }
+      ],
+      "qwen_prediction": "watch",
+      "qwen_raw_response": "watch",
+      "qwen_inference_time_s": 1.379,
+      "qwen_latency_ms": 1379.5,
+      "qwen_is_correct": true
+    },
+    {
+      "image": "watch4.jpg",
+      "actual_class": "watch",
+      "yolo_prediction": "watch",
+      "yolo_confidence": 0.5995,
+      "yolo_latency_ms": 17.24,
+      "yolo_is_correct": true,
+      "yolo_detections_count": 1,
+      "yolo_all_detections": [
+        {
+          "class": "watch",
+          "confidence": 0.5995
+        }
+      ],
+      "qwen_prediction": "watch",
+      "qwen_raw_response": "watch",
+      "qwen_inference_time_s": 0.932,
+      "qwen_latency_ms": 931.5,
+      "qwen_is_correct": true
+    }
+  ]
+}

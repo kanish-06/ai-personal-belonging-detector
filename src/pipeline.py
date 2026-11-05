@@ -1,7 +1,8 @@
 """
 pipeline.py — End-to-End Real-Time Pipeline
 
-Ties together: Camera -> Detection -> Feature Extraction -> Fuzzy Guidance -> Voice Output
+Ties together: Camera -> Hybrid YOLOv8 + Qwen3-VL Detection -> Feature Extraction
+             -> Fuzzy Guidance -> Voice Output
 into a continuous real-time loop.
 
 This is the main entry point for running the belonging detector system.
@@ -24,6 +25,8 @@ except ImportError:
     print("[ERROR] OpenCV not installed. Install with: pip install opencv-python")
 
 from detect import ObjectDetector, CLASS_NAMES
+from hybrid_detector import HybridDetector
+from qwen_verifier import QwenVerifier
 from feature_extraction import FeatureExtractor
 from fuzzy_guidance import FuzzyGuidanceSystem, generate_direction_phrase
 from voice_output import VoiceOutput
@@ -36,8 +39,8 @@ class BelongingDetectorPipeline:
 
     Flow per frame:
         1. Capture frame from camera
-        2. Run YOLOv8 object detection
-        3. Extract features (angle_offset, confidence, temporal_stability)
+        2. Run YOLOv8 object detection (with selective Qwen3-VL verification on uncertain boxes)
+        3. Extract depth and features (angle_offset, confidence, temporal_stability)
         4. Compute guidance via Fuzzy Inference System (urgency, frequency, direction)
         5. Speak guidance via Text-to-Speech
     """
@@ -46,6 +49,9 @@ class BelongingDetectorPipeline:
                  model_path=None, 
                  camera_index=0,
                  confidence_threshold=0.35,
+                 uncertain_threshold=0.20,
+                 enable_hybrid=True,
+                 qwen_model="qwen3-vl:2b",
                  target_class=None,
                  show_gui=True,
                  history_length=10):
@@ -53,13 +59,18 @@ class BelongingDetectorPipeline:
         Args:
             model_path (str): Path to trained YOLOv8 weights (best.pt).
             camera_index (int): Camera device index for OpenCV.
-            confidence_threshold (float): Minimum detection confidence.
+            confidence_threshold (float): Reliable detection confidence threshold (>= 0.35 bypasses Qwen).
+            uncertain_threshold (float): Minimum detection threshold (0.20 <= conf < 0.35 verified by Qwen).
+            enable_hybrid (bool): Whether to enable secondary Qwen3-VL verification.
+            qwen_model (str): Ollama tag for Qwen3-VL model.
             target_class (str): If set, only announce this class (e.g., "phone").
             show_gui (bool): Whether to display the camera feed with overlays.
             history_length (int): Frames of history for stability tracking.
         """
         self.camera_index = camera_index
         self.confidence_threshold = confidence_threshold
+        self.uncertain_threshold = uncertain_threshold
+        self.enable_hybrid = enable_hybrid
         self.target_class = target_class
         self.show_gui = show_gui
 
@@ -68,22 +79,31 @@ class BelongingDetectorPipeline:
         print("=" * 60)
 
         # Initialize components
-        print("\n[1/4] Loading object detector...")
+        print("\n[1/5] Loading YOLO object detector...")
         self.detector = ObjectDetector(
             model_path=model_path,
-            confidence_threshold=confidence_threshold,
+            confidence_threshold=uncertain_threshold,
         )
 
-        print("[2/4] Initializing feature extractor...")
+        print("[2/5] Initializing Hybrid Detector (YOLO + Qwen3-VL)...")
+        verifier = QwenVerifier(model_name=qwen_model) if enable_hybrid else None
+        self.hybrid_detector = HybridDetector(
+            yolo_detector=self.detector,
+            verifier=verifier,
+            reliable_threshold=confidence_threshold,
+            uncertain_threshold=uncertain_threshold,
+            enabled=enable_hybrid,
+            async_mode=True
+        )
+
+        print("[3/5] Initializing feature extractor...")
         self.feature_extractor = FeatureExtractor(history_length=history_length)
 
-        print("[3/4] Initializing fuzzy guidance system...")
+        print("[4/5] Initializing fuzzy guidance system...")
         self.fuzzy = FuzzyGuidanceSystem()
 
-        print("[4/4] Initializing voice output...")
+        print("[5/5] Initializing voice output & depth estimator...")
         self.voice = VoiceOutput(rate=160, volume=0.9)
-
-        print("[5/5] Initializing depth estimator...")
         self.depth_estimator = DepthEstimator()
 
         self._running = False
@@ -93,6 +113,8 @@ class BelongingDetectorPipeline:
 
         print("\n" + "=" * 60)
         print("  Pipeline ready!")
+        print(f"  Mode: {'Hybrid YOLO+Qwen3-VL' if enable_hybrid else 'Pure YOLO'}")
+        print(f"  Reliable Threshold: {confidence_threshold:.2f} | Uncertain: [{uncertain_threshold:.2f}, {confidence_threshold:.2f})")
         print("=" * 60)
 
     def run(self):
@@ -149,14 +171,14 @@ class BelongingDetectorPipeline:
 
                 frame_start_time = time.time()
 
-                # ── Step 1: Object Detection ───────────────────────────────
-                detections = self.detector.detect(frame, self.confidence_threshold)
+                # ── Step 1: Hybrid Detection (YOLO + Selective Qwen) ───────
+                detections = self.hybrid_detector.detect(frame, sync=False)
 
                 # Filter by target class if specified
                 if self.target_class:
                     detections = [d for d in detections if d.class_name == self.target_class]
 
-                # ── Step 2: Depth + Feature Extraction ─────────────────────────────
+                # ── Step 2: Depth + Feature Extraction ─────────────────────
                 features_list = []
                 depth_latency = 0.0
                 depth_map = None
@@ -195,6 +217,7 @@ class BelongingDetectorPipeline:
                         angle_offset=best_features['angle_offset'],
                         confidence=best_features['confidence'],
                         stability=best_features['temporal_stability'],
+                        is_verified=best_features.get('is_verified', False),
                     )
 
                     # Voice announcement
@@ -257,6 +280,7 @@ class BelongingDetectorPipeline:
             cap.release()
             if self.show_gui:
                 cv2.destroyAllWindows()
+            self.hybrid_detector.shutdown()
             self.voice.shutdown()
             print("[Pipeline] Shutdown complete.")
 
@@ -278,9 +302,10 @@ class BelongingDetectorPipeline:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
             dist_str = f" {feat['distance']:.1f}m" if feat.get('distance', -1.0) > 0 else ""
+            verified_tag = f" [{det.verified_by}]" if hasattr(det, 'verified_by') and det.verified_by != "yolo" else ""
 
-            # Label with class, confidence, distance, and angle
-            label = f"{det.class_name} {det.confidence:.2f}{dist_str} | angle:{feat['angle_offset']:.2f}"
+            # Label with class, confidence, distance, angle, and verification source
+            label = f"{det.class_name} {det.confidence:.2f}{dist_str} | angle:{feat['angle_offset']:.2f}{verified_tag}"
             (lw, lh), baseline = cv2.getTextSize(
                 label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
             )
@@ -331,7 +356,19 @@ def main():
     )
     parser.add_argument(
         "--confidence", type=float, default=0.35,
-        help="Minimum detection confidence threshold (default: 0.35)",
+        help="Reliable detection confidence threshold (default: 0.35)",
+    )
+    parser.add_argument(
+        "--uncertain-thresh", type=float, default=0.20,
+        help="Minimum threshold to send detection to Qwen verification (default: 0.20)",
+    )
+    parser.add_argument(
+        "--no-hybrid", action="store_true",
+        help="Disable Qwen3-VL secondary verification (run pure YOLOv8)",
+    )
+    parser.add_argument(
+        "--qwen-model", type=str, default="qwen3-vl:2b",
+        help="Ollama model tag for Qwen3-VL (default: qwen3-vl:2b)",
     )
     parser.add_argument(
         "--target", type=str, default=None,
@@ -353,6 +390,9 @@ def main():
         model_path=args.model,
         camera_index=args.camera,
         confidence_threshold=args.confidence,
+        uncertain_threshold=args.uncertain_thresh,
+        enable_hybrid=not args.no_hybrid,
+        qwen_model=args.qwen_model,
         target_class=args.target,
         show_gui=not args.no_gui,
         history_length=args.history,

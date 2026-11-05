@@ -126,7 +126,7 @@ class FuzzyGuidanceSystem:
 
         print("[FuzzyGuidance] Fuzzy Inference System initialized with 6 Mamdani rules.")
 
-    def compute(self, angle_offset, confidence, stability):
+    def compute(self, angle_offset, confidence, stability, is_verified=False):
         """
         Run the fuzzy inference system.
 
@@ -134,6 +134,7 @@ class FuzzyGuidanceSystem:
             angle_offset (float): Horizontal offset (-1 to +1).
             confidence (float): Detection confidence (0-1).
             stability (float): Temporal stability (0-1).
+            is_verified (bool): True if verified by Qwen3-VL in the uncertain range.
 
         Returns:
             dict: {
@@ -144,7 +145,7 @@ class FuzzyGuidanceSystem:
             }
         """
         if self._use_fallback:
-            return self._fallback_compute(angle_offset, confidence, stability)
+            return self._fallback_compute(angle_offset, confidence, stability, is_verified=is_verified)
 
         # Clamp inputs to valid ranges
         angle_offset = np.clip(angle_offset, -1.0, 1.0)
@@ -163,19 +164,25 @@ class FuzzyGuidanceSystem:
         except Exception as e:
             # Fallback if FIS computation fails (e.g., no rules fire)
             print(f"[FuzzyGuidance] FIS computation error: {e}. Using fallback.")
-            return self._fallback_compute(angle_offset, confidence, stability)
+            return self._fallback_compute(angle_offset, confidence, stability, is_verified=is_verified)
 
         # Derive direction label from angle_offset
         direction = self._get_direction(angle_offset)
 
-        # Decide whether to announce (hard threshold on confidence and urgency)
-        should_announce = confidence >= 0.30 and urgency > 0.15
+        # Decide whether to announce:
+        # Normal detections require confidence >= 0.30 and urgency > 0.15.
+        # Qwen-confirmed detections in uncertain range [0.20, 0.35) are eligible
+        # once the existing urgency condition (urgency > 0.15) is satisfied.
+        if is_verified and confidence >= 0.20:
+            should_announce = urgency > 0.15
+        else:
+            should_announce = confidence >= 0.30 and urgency > 0.15
 
         return {
             'urgency': urgency,
             'frequency': frequency,
             'direction': direction,
-            'should_announce': should_announce,
+            'should_announce': bool(should_announce),
         }
 
     def _get_direction(self, angle_offset):
@@ -187,7 +194,7 @@ class FuzzyGuidanceSystem:
         else:
             return 'center'
 
-    def _fallback_compute(self, angle_offset, confidence, stability):
+    def _fallback_compute(self, angle_offset, confidence, stability, is_verified=False):
         """
         Simple rule-based fallback when scikit-fuzzy is not available.
         Approximates the fuzzy system's behavior with hard thresholds.
@@ -204,13 +211,16 @@ class FuzzyGuidanceSystem:
             urgency = 0.5
             frequency = 0.4
 
-        should_announce = confidence >= 0.30 and urgency > 0.15
+        if is_verified and confidence >= 0.20:
+            should_announce = urgency > 0.15
+        else:
+            should_announce = confidence >= 0.30 and urgency > 0.15
 
         return {
             'urgency': urgency,
             'frequency': frequency,
             'direction': direction,
-            'should_announce': should_announce,
+            'should_announce': bool(should_announce),
         }
 
 
@@ -250,20 +260,21 @@ if __name__ == "__main__":
     fis = FuzzyGuidanceSystem()
 
     test_cases = [
-        # (angle_offset, confidence, stability, description)
-        (0.0, 0.92, 0.9, "Center, high-conf, stable -> HIGH urgency"),
-        (-0.5, 0.88, 0.8, "Left, high-conf, stable -> HIGH urgency, left"),
-        (0.6, 0.90, 0.85, "Right, high-conf, stable -> HIGH urgency, right"),
-        (0.1, 0.55, 0.7, "Center, medium-conf, stable -> MEDIUM urgency"),
-        (0.0, 0.85, 0.2, "High-conf but UNSTABLE -> MEDIUM/LOW urgency"),
-        (0.0, 0.20, 0.8, "Stable but LOW confidence -> suppress"),
+        # (angle_offset, confidence, stability, is_verified, description)
+        (0.0, 0.92, 0.9, False, "Center, high-conf, stable -> HIGH urgency"),
+        (-0.5, 0.88, 0.8, False, "Left, high-conf, stable -> HIGH urgency, left"),
+        (0.6, 0.90, 0.85, False, "Right, high-conf, stable -> HIGH urgency, right"),
+        (0.1, 0.55, 0.7, False, "Center, medium-conf, stable -> MEDIUM urgency"),
+        (0.0, 0.85, 0.2, False, "High-conf but UNSTABLE -> MEDIUM/LOW urgency"),
+        (0.0, 0.20, 0.8, False, "Stable but LOW confidence (unverified) -> suppress"),
+        (0.20, 0.272, 0.0, True, "Qwen-verified uncertain wallet (conf=0.272) -> announce"),
     ]
 
-    for angle, conf, stab, desc in test_cases:
-        result = fis.compute(angle, conf, stab)
+    for angle, conf, stab, verified, desc in test_cases:
+        result = fis.compute(angle, conf, stab, is_verified=verified)
         dir_phrase = generate_direction_phrase(angle)
         print(f"  {desc}")
-        print(f"    Inputs:  angle={angle:.1f}, conf={conf:.2f}, stab={stab:.2f}")
+        print(f"    Inputs:  angle={angle:.1f}, conf={conf:.3f}, stab={stab:.2f}, verified={verified}")
         print(f"    Outputs: urgency={result['urgency']:.2f}, freq={result['frequency']:.2f}, "
               f"dir={result['direction']}, announce={result['should_announce']}")
         print(f"    Phrase:  \"{dir_phrase}\"")

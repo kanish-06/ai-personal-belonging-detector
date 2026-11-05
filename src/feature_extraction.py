@@ -5,6 +5,7 @@ Derives high-level features from raw detections for use by the fuzzy guidance sy
   - angle_offset:       horizontal position offset from center (-1 = far left, +1 = far right)
   - confidence:         raw detector confidence score
   - temporal_stability: fraction of recent frames with consistent detection (reduces flicker)
+  - is_verified:        whether the detection was verified by secondary multimodal verifier
 """
 
 from collections import defaultdict, deque
@@ -47,7 +48,8 @@ class FeatureExtractor:
                 'class_name': str,
                 'angle_offset': float,     # -1 (far left) to +1 (far right)
                 'confidence': float,       # 0 to 1
-                'temporal_stability': float # 0 to 1
+                'temporal_stability': float, # 0 to 1
+                'is_verified': bool        # True if verified by secondary verifier
             }
         """
         cx, cy, w, h = detection.bbox_xywh
@@ -58,11 +60,17 @@ class FeatureExtractor:
         angle_offset = (cx - frame_center_x) / frame_center_x if frame_center_x > 0 else 0.0
         angle_offset = np.clip(angle_offset, -1.0, 1.0)
 
-        # --- confidence ---
+        # --- confidence (preserved original YOLO confidence) ---
         confidence = float(detection.confidence)
 
         # --- temporal_stability ---
         stability = self._compute_stability(detection)
+
+        # --- is_verified flag ---
+        is_verified = bool(
+            getattr(detection, 'is_verified', False) or 
+            getattr(detection, 'verified_by', 'yolo') in ('qwen', 'qwen_reconciled', 'qwen_cache')
+        )
 
         return {
             'class_id': detection.class_id,
@@ -70,6 +78,7 @@ class FeatureExtractor:
             'angle_offset': float(angle_offset),
             'confidence': float(confidence),
             'temporal_stability': float(stability),
+            'is_verified': is_verified,
         }
 
     def update_history(self, detections):

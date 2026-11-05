@@ -1,0 +1,17 @@
+image,actual_class,yolo_prediction,yolo_confidence,yolo_is_correct,yolo_latency_ms,qwen_prediction,qwen_is_correct,qwen_inference_time_s,qwen_raw_response
+glasses.jpeg,glasses,glasses,0.8742,True,31.93,glasses,True,0.798,glasses
+glasses2.jpeg,glasses,glasses,0.801,True,60.55,glasses,True,1.027,glasses
+k_wallet.jpeg,wallet,wallet,0.8955,True,181.56,wallet,True,1.417,wallet
+keys1.jpg,keys,keys,0.8909,True,19.78,keys,True,1.806,keys
+keys2.jpg,keys,none,0.0,False,20.08,keys,True,0.965,keys
+keys3.jpg,keys,keys,0.8503,True,20.95,keys,True,1.174,keys
+keys4.jpg,keys,phone,0.5409,False,11.15,keys,True,1.337,keys
+phone1.jpg,phone,none,0.0,False,18.04,phone,True,1.145,phone
+phone2.jpg,phone,phone,0.3744,True,16.36,phone,True,1.053,phone
+test_image.jpg,unknown,none,0.0,True,53.72,unknown,True,5.736,unknown
+wallet.jpg,wallet,wallet,0.9183,True,91.25,wallet,True,1.189,wallet
+wallet2.jpeg,wallet,wallet,0.2724,True,51.91,wallet,True,1.382,wallet
+watch1.jpg,watch,none,0.0,False,23.84,watch,True,0.983,watch
+watch2.jpg,watch,watch,0.4525,True,34.91,watch,True,1.134,watch
+watch3.jpg,watch,watch,0.2681,True,18.01,watch,True,1.379,watch
+watch4.jpg,watch,watch,0.5995,True,17.24,watch,True,0.932,watch

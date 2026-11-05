@@ -37,3 +37,6 @@ Thumbs.db
 
 # Build Specification
 PROJECT_BUILD_SPEC.md
+
+# test
+test_qwen_verification.py

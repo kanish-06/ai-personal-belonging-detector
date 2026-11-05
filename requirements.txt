@@ -26,3 +26,6 @@ PyYAML>=6.0
 transformers>=4.45.0
 huggingface-hub>=0.23.0
 accelerate>=0.26.0
+
+# Multimodal Visual Verification (Hybrid Architecture)
+ollama>=0.3.0

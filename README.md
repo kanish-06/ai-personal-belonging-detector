@@ -6,43 +6,77 @@ An AI-powered assistive system that helps blind users locate personal belongings
 
 The goal of this project is to build an object-detection system that assists visually impaired or blind users in locating small, commonly misplaced personal belongings in indoor environments. The system uses a camera to perceive the environment and spoken voice guidance to navigate the user toward the detected object. 
 
-This project combines a deep learning object detector for perception with a Mamdani Fuzzy Inference System for decision-making and voice guidance.
+This project combines a real-time deep learning object detector (YOLOv8-nano), selective multimodal visual verification (Qwen3-VL via Ollama), metric monocular depth estimation (Depth Anything V2), and a Mamdani Fuzzy Inference System for decision-making and voice guidance.
 
 ## Architecture and End-to-End Workflow
 
-The system is split into two connected components:
+The system is split into connected perception and decision components:
 
-1. **Neural Component (Perception & Depth)** — A CNN-based object detector (YOLOv8-nano) that finds target objects, paired with Depth Anything V2 (Metric Indoor Small) which computes a metric depth map of the environment to estimate the object's distance.
-2. **Fuzzy Component (Decision & Guidance)** — A Mamdani Fuzzy Inference System (FIS) that takes the object's horizontal position, detector confidence, and temporal stability, converting them into smooth, human-friendly voice guidance (direction, urgency, announcement frequency). Distance is then woven into the spoken phrase.
+1. **Primary Perception (YOLOv8-nano)**: Runs on every camera frame to produce bounding boxes and initial confidence scores.
+2. **Selective Secondary Verifier (Qwen3-VL 2B)**: When YOLO produces a low-confidence detection (`0.20 <= conf < 0.35`), the bounding box crop is passed to a local Qwen3-VL model running via Ollama. High-confidence detections (`conf >= 0.35`) bypass Qwen entirely.
+3. **Metric Depth Estimation (Depth Anything V2 Metric Indoor Small)**: Computes a metric depth map of the environment and extracts physical distance (in meters) from the verified bounding box.
+4. **Fuzzy Decision & Guidance (Mamdani FIS)**: Converts horizontal angle offset, detector confidence, and temporal tracking stability into smooth, human-friendly voice guidance (direction, urgency, announcement frequency).
+5. **Spoken Voice Guidance (pyttsx3)**: Delivers rate-limited, spoken announcements with distance and direction.
 
-### End-to-End Workflow
+### End-to-End Workflow Diagram
+
 ```text
-Camera
-  |
-  v
-Object Detector (CNN: YOLOv8-nano, fine-tuned on 5 classes)
-  |  outputs: class label, bounding box (x, y, w, h), confidence score
-  v
+Camera Frame
+    │
+    ▼
+YOLOv8-nano Object Detector (Runs every frame)
+    │
+    ├─► High Confidence (conf >= 0.35) ──► Direct Pass-Through
+    │
+    └─► Uncertain (0.20 <= conf < 0.35) ──► Crop Bounding Box
+                                                  │
+                                                  ▼
+                                       Qwen3-VL (2B via Ollama)
+                                       - Confirmed / Reconciled: Retain YOLO Box
+                                       - Unknown / Error: Suppress Announcement
+    │
+    ▼
 Depth Estimation (Depth Anything V2 Metric Indoor Small)
-  |  outputs: metric distance (meters) extracted from the bounding box
-  v
+    │  outputs: metric distance (meters) extracted from the bounding box
+    ▼
 Feature Extractor
-  |  derives: angle_offset (horizontal position), distance, confidence, temporal_stability
-  v
+    │  derives: angle_offset (horizontal position), distance, confidence, temporal_stability
+    ▼
 Fuzzy Inference System (Mamdani FIS)
-  |  inputs: angle, confidence, stability
-  |  outputs: guidance urgency, announcement frequency, direction
-  v
-Text-to-Speech / Voice Guidance
-  |  speaks short phrases: e.g. "Phone found at 1.1 meters, directly ahead!"
-  v
-User (spoken feedback)
+    │  inputs: angle, confidence, stability
+    │  outputs: guidance urgency, announcement frequency, direction
+    ▼
+Text-to-Speech / Voice Guidance (pyttsx3)
+    │  speaks short phrases: e.g. "Wallet detected at 0.9 meters, slightly to your right."
+    ▼
+User (spoken audio feedback)
 ```
+
+## Hybrid Detection Architecture (YOLOv8 + Qwen3-VL)
+
+Small items such as keys, wristwatches, and folded wallets often present ambiguous visual features under varying angles and lighting, causing bounding-box CNNs to produce marginal confidence scores or misclassifications.
+
+To address this without sacrificing 30 FPS camera responsiveness:
+- **YOLO remains the primary perception engine**: It localizes objects and drives real-time tracking at ~25–35 ms latency.
+- **Qwen3-VL acts as a selective secondary verifier**:
+  - Only invoked when YOLO detects an object with confidence in the uncertain range `[0.20, 0.35)`.
+  - Analyzes the cropped object patch and returns strictly one of: `keys`, `wallet`, `phone`, `watch`, `glasses`, or `unknown`.
+  - **Reconciliation Rules**:
+    - If Qwen confirms the YOLO class: the detection is retained.
+    - If Qwen identifies a different supported class: the class is updated to the verified class, while preserving YOLO's original bounding box and original confidence score.
+    - If Qwen cannot identify the object (`unknown`) or fails: the detection and announcement are suppressed.
+  - **No YOLO Detection Rule**: If YOLO detects nothing in the frame, Qwen is never called and no synthetic boxes are created.
+- **Asynchronous Execution & Spatial Caching**:
+  - Live webcam execution runs verification in a background worker thread (`ThreadPoolExecutor`), preventing the camera feed from freezing during the ~1.0–1.5s VLM response.
+  - Spatial-temporal caching (IoU matching within a 3.0-second window) prevents repetitive queries for the same object across consecutive video frames.
+
+> **Evaluation Note & Empirical Limitation:**  
+> In preliminary benchmark testing across a curated set of 16 test images, Qwen3-VL demonstrated strong classification capabilities, especially on keys and watches where YOLO produced lower confidence scores. However, **this sample size is limited** and does not constitute statistically definitive proof of superior general accuracy across all uncontrolled indoor conditions. The hybrid architecture is designed as a safety/verification layer, not a replacement for domain-specific fine-tuning.
 
 ## Target Objects (5 classes)
 
 | ID | Class    | Description                |
-|----|----------|----------------------------|
+|:---|:---------|:---------------------------|
 | 0  | keys     | House/car keys             |
 | 1  | wallet   | Wallet, billfold           |
 | 2  | phone    | Smartphone, cellphone      |
@@ -51,46 +85,52 @@ User (spoken feedback)
 
 ## Repository Structure
 
-```
+```text
 belonging-detector/
 │
 ├── dataset/
 │   ├── classes.txt
 │   ├── data.yaml
 │   ├── remap_dataset.py
-│   ├── images/
-│   │   ├── train/
-│   │   └── val/
-│   └── labels/
-│       ├── train/
-│       └── val/
+│   ├── images/ (train/, val/)
+│   └── labels/ (train/, val/)
 │
 ├── models/
 │   └── detector/
 │       └── best.pt
 │
 ├── src/
-│   ├── detect.py
-│   ├── depth_estimation.py
-│   ├── feature_extraction.py
-│   ├── fuzzy_guidance.py
-│   ├── voice_output.py
-│   └── pipeline.py
+│   ├── detect.py              # YOLOv8 object detector
+│   ├── qwen_verifier.py       # Qwen3-VL Ollama verifier & response normalizer
+│   ├── hybrid_detector.py     # YOLO + Qwen hybrid coordinator & spatial cache
+│   ├── depth_estimation.py    # Depth Anything V2 monocular depth
+│   ├── feature_extraction.py  # Spatial angle & stability tracking
+│   ├── fuzzy_guidance.py      # Mamdani FIS guidance logic
+│   ├── voice_output.py        # Subprocess pyttsx3 voice guidance
+│   └── pipeline.py            # End-to-end real-time loop
 │
 ├── training/
-│   └── train_yolov8.py
+│   ├── train_yolov8.py
+│   └── train_yolov8_colab.py
 │
 ├── evaluation/
 │   ├── evaluate_detector.py
-│   └── evaluate_usability.py
+│   ├── evaluate_usability.py
+│   ├── evaluate_yolo_vs_qwen.py # YOLO vs Qwen comparative evaluation
+│   ├── run_full_benchmark.py
+│   └── results/
+│       ├── yolo_vs_qwen_comparison.json
+│       └── yolo_vs_qwen_comparison.csv
 │
 ├── tests/
+│   ├── test_hybrid_pipeline.py      # Functional verification suite
+│   ├── test_voice_pipeline_path.py  # Voice execution path check
 │   ├── test_depth.py
 │   ├── test_pipeline_image.py
 │   ├── verify_cuda.py
-│   ├── verify_dataset.py
-│   └── test_voice_pipeline_path.py
+│   └── verify_dataset.py
 │
+├── test-data/                 # Test images for comparative evaluation
 ├── requirements.txt
 ├── README.md
 └── .gitignore
@@ -108,99 +148,72 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-### 2. Install Dependencies
-
-The project requires PyTorch, OpenCV, Ultralytics (YOLO), and Hugging Face Transformers.
+### 2. Install Python Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Dataset Source, Preparation, and Class Remapping
+### 3. Install and Run Ollama for Qwen3-VL
 
-The primary datasets were sourced from Roboflow Universe (e.g., Object Detection HW, personal items datasets).
-Because public datasets have inconsistent naming (e.g., `Car-key` vs `keys`, `mobile-phone` vs `phone`), we use a custom script to standardize them.
+The secondary verifier requires Ollama running locally:
 
-1. **Download:** Export datasets in YOLOv8 format into `raw_download/`.
-2. **Remap & Normalize:** Run `dataset/remap_dataset.py` to handle class name and ID normalization, ensuring all labels strictly map to our 5 target classes (`keys`, `wallet`, `phone`, `watch`, `glasses`).
-3. **Verify:** Use `dataset/verify_dataset.py` to confirm the final dataset integrity.
+1. Download and install Ollama from [ollama.com](https://ollama.com/).
+2. Pull and start the Qwen3-VL 2B model:
+   ```bash
+   ollama run qwen3-vl:2b
+   ```
+3. Ollama runs as a local background service on `http://127.0.0.1:11434`. If Ollama is offline, the pipeline gracefully falls back to pure YOLO mode without crashing.
 
-## YOLOv8 Training Instructions
-
-We use transfer learning to fine-tune `yolov8n.pt` for our 5 classes. 
-
-```bash
-python training/train_yolov8.py --data dataset/data.yaml --epochs 100 --batch 8 --imgsz 640
-```
-The best weights are saved to `models/detector/best.pt`.
-
-## Fuzzy Logic Inputs, Outputs, and Rules
-
-The Mamdani Fuzzy Inference System converts numerical inputs into semantic voice guidance.
-
-**Inputs:**
-- **Angle (-1 to +1):** Left, Center, Right
-- **Confidence (0-1):** Low, Medium, High
-- **Stability (0-1):** Unstable, Stable (prevents flickering announcements)
-
-**Outputs:**
-- **Guidance Urgency:** Low, Medium, High
-- **Announcement Frequency:** Slow, Fast
-- *(Note: Distance is currently appended to the voice phrase directly outside the fuzzy system)*
-
-**Example Rules:**
-- IF confidence is High AND angle is Center AND stability is Stable THEN urgency is High, frequency is Fast. -> "Phone found at 1.1 meters, directly ahead!"
-- IF confidence is Medium AND stability is Stable THEN urgency is Medium, frequency is Slow.
-- IF stability is Unstable THEN urgency is Low (suppress announcements).
-
-## How to Run the Full Pipeline
+## How to Run the Pipeline
 
 ```bash
-# Full GUI mode for debugging/testing:
+# Run full hybrid pipeline (YOLO + Qwen3-VL verification enabled by default):
 python src/pipeline.py
 
-# also you can specify the threshold confidence 
-# eg:for 35% confidence level:
-python src/pipeline.py --confidence 0.35
+# Adjust reliable threshold (e.g., trust YOLO directly if conf >= 0.40):
+python src/pipeline.py --confidence 0.40
+
+# Adjust uncertainty floor (e.g., only verify detections with conf >= 0.15):
+python src/pipeline.py --uncertain-thresh 0.15
 
 # Search for a specific object only:
-python src/pipeline.py --target phone
+python src/pipeline.py --target keys
 
-# Headless mode (e.g., Raspberry Pi deployment):
+# Disable Qwen3-VL (run pure YOLO mode):
+python src/pipeline.py --no-hybrid
+
+# Headless mode (for single-board computers / Raspberry Pi):
 python src/pipeline.py --no-gui
-
-
 ```
 
-## Evaluation Methods
+## Running Evaluations and Tests
 
+### 1. Hybrid Pipeline Functional Verification
+Verifies high-confidence bypass, low-confidence invocation, bounding box preservation, unknown suppression, and voice execution:
 ```bash
-# 1. Detector metrics (mAP, precision, recall)
-python evaluation/evaluate_detector.py
+python tests/test_hybrid_pipeline.py
+```
 
-# 2. Latency benchmark and usability metrics
-python evaluation/evaluate_usability.py --benchmark
+### 2. YOLO vs Qwen Comparative Evaluation
+Runs side-by-side evaluation across test images, recording per-image predictions, confidence, inference times (with cold-start warm-up handling), and generating JSON & CSV reports:
+```bash
+python evaluation/evaluate_yolo_vs_qwen.py
+```
+
+### 3. Detector Metrics and Full Benchmark
+```bash
+python evaluation/evaluate_detector.py
+python evaluation/run_full_benchmark.py
 ```
 
 ## Current Project Status
 
 - [x] **Environment Setup:** COMPLETED
-- [x] **Dataset Pipeline:** COMPLETED
-- [x] **YOLOv8 Training:** COMPLETED 
-- [x] **Evaluation Script Fixes:** COMPLETED
-- [x] **Fuzzy System Implementation:** COMPLETED
-- [x] **Depth Estimation Integration:** COMPLETED (Depth Anything V2 Metric Indoor Small)
-- [x] **End-to-End Pipeline Integration:** COMPLETED
-- [ ] **Performance Optimization:** PENDING (Improve end-to-end latency)
-
-### Current Results and Benchmarks
-- **Model:** YOLOv8-nano
-- **Validation Result:** `mAP50 = 0.6406`
-- **Depth Inference Latency:** ~350ms (on initial GPU pass)
-- **End-to-End Latency:** ~1350ms (includes pipeline and model overhead)
-
-## Troubleshooting and Limitations
-
-- **CUDA/PyTorch Issues:** If the detector falls back to CPU, ensure you installed the PyTorch version compiled for your specific CUDA toolkit. Check with `python -c "import torch; print(torch.cuda.is_available())"`.
-- **Out of Memory (OOM) during Training:** If YOLOv8 training crashes, reduce the batch size in `train_yolov8.py` (e.g., from `--batch 8` to `--batch 4`).
-- **Glasses Detection:** The `glasses` class may underperform due to reflections and thin frames. Consider augmenting the dataset with more glasses images if precision/recall is noticeably lower.
+- [x] **Dataset Pipeline & Remapping:** COMPLETED
+- [x] **YOLOv8 Training & Weights:** COMPLETED (`models/detector/best.pt`)
+- [x] **Fuzzy Guidance (Mamdani FIS):** COMPLETED
+- [x] **Monocular Depth Estimation:** COMPLETED (Depth Anything V2)
+- [x] **Hybrid YOLO + Qwen3-VL Architecture:** COMPLETED
+- [x] **Voice Output Stability & Audio Path Verification:** COMPLETED
+- [ ] **Edge Optimization** 
